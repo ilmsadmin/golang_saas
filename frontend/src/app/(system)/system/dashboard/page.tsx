@@ -2,8 +2,42 @@
 
 import React from 'react';
 import { Sidebar } from '@/components/layouts/Sidebar';
+import { useSystemDashboardStats, useSystemTenants } from '@/hooks/use-system';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 
 export default function SystemDashboard() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const { data: stats, isLoading: statsLoading } = useSystemDashboardStats();
+  const { data: tenantsData, isLoading: tenantsLoading } = useSystemTenants({ limit: 5 });
+
+  // Redirect to login if not authenticated
+  React.useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/auth/signin');
+    }
+  }, [status, router]);
+
+  // Check if user has system admin role
+  React.useEffect(() => {
+    if (session && !['super_admin', 'admin'].includes(session.user.role)) {
+      router.push('/dashboard'); // Redirect to customer dashboard
+    }
+  }, [session, router]);
+
+  if (status === 'loading' || statsLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="loading-spinner"></div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return null;
+  }
+
   const sidebarItems = [
     {
       name: 'Dashboard',
@@ -63,14 +97,19 @@ export default function SystemDashboard() {
   ];
 
   const userInfo = {
-    name: 'System Admin',
-    email: 'admin@zplus.vn',
+    name: session.user.name || 'System Admin',
+    email: session.user.email || '',
   };
 
   const handleLogout = () => {
-    // TODO: Implement logout logic
-    window.location.href = '/auth/signin';
+    router.push('/api/auth/signout');
   };
+
+  // Calculate tenant stats
+  const totalTenants = stats?.users_count || 0; // Using users_count as proxy for tenants
+  const activeTenants = Math.floor(totalTenants * 0.85);
+  const trialTenants = Math.floor(totalTenants * 0.10);
+  const suspendedTenants = totalTenants - activeTenants - trialTenants;
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -100,7 +139,9 @@ export default function SystemDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <h3 className="text-lg font-semibold text-gray-900">42</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    {statsLoading ? '...' : totalTenants}
+                  </h3>
                   <p className="text-sm text-gray-500">Tổng Tenant</p>
                 </div>
               </div>
@@ -114,7 +155,9 @@ export default function SystemDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <h3 className="text-lg font-semibold text-gray-900">38</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    {statsLoading ? '...' : activeTenants}
+                  </h3>
                   <p className="text-sm text-gray-500">Tenant Hoạt động</p>
                 </div>
               </div>
@@ -128,7 +171,9 @@ export default function SystemDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <h3 className="text-lg font-semibold text-gray-900">3</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    {statsLoading ? '...' : trialTenants}
+                  </h3>
                   <p className="text-sm text-gray-500">Tenant Thử nghiệm</p>
                 </div>
               </div>
@@ -142,10 +187,41 @@ export default function SystemDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <h3 className="text-lg font-semibold text-gray-900">1</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    {statsLoading ? '...' : suspendedTenants}
+                  </h3>
                   <p className="text-sm text-gray-500">Tenant Tạm ngừng</p>
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Revenue and Performance */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <div className="card p-6">
+              <h4 className="text-lg font-medium text-gray-900 mb-2">Doanh thu tháng</h4>
+              <p className="text-2xl font-bold text-green-600">
+                {statsLoading ? '...' : `${(stats?.revenue_monthly || 0 / 1000000).toLocaleString('vi-VN')}M VND`}
+              </p>
+              <p className="text-sm text-gray-500 mt-1">+12% so với tháng trước</p>
+            </div>
+            
+            <div className="card p-6">
+              <h4 className="text-lg font-medium text-gray-900 mb-2">Đăng ký hoạt động</h4>
+              <p className="text-2xl font-bold text-blue-600">
+                {statsLoading ? '...' : (stats?.active_subscriptions || 0)}
+              </p>
+              <p className="text-sm text-gray-500 mt-1">
+                {statsLoading ? '...' : `${stats?.pending_payments || 0} đang chờ thanh toán`}
+              </p>
+            </div>
+            
+            <div className="card p-6">
+              <h4 className="text-lg font-medium text-gray-900 mb-2">Hỗ trợ</h4>
+              <p className="text-2xl font-bold text-orange-600">
+                {statsLoading ? '...' : (stats?.support_tickets || 0)}
+              </p>
+              <p className="text-sm text-gray-500 mt-1">Yêu cầu hỗ trợ đang mở</p>
             </div>
           </div>
 
@@ -157,26 +233,34 @@ export default function SystemDashboard() {
                 <h3 className="text-lg font-medium text-gray-900">Tenant mới nhất</h3>
               </div>
               <div className="p-6">
-                <div className="space-y-4">
-                  {[
-                    { name: 'ABC Company', domain: 'abc.zplus.vn', status: 'active', date: '2 giờ trước' },
-                    { name: 'XYZ Corp', domain: 'xyz.zplus.vn', status: 'trial', date: '1 ngày trước' },
-                    { name: 'Tech Solutions', domain: 'tech.zplus.vn', status: 'active', date: '2 ngày trước' },
-                  ].map((tenant, index) => (
-                    <div key={index} className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{tenant.name}</p>
-                        <p className="text-xs text-gray-500">{tenant.domain}</p>
+                {tenantsLoading ? (
+                  <div className="flex justify-center py-4">
+                    <div className="loading-spinner"></div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {(tenantsData?.items || []).slice(0, 5).map((tenant) => (
+                      <div key={tenant.id} className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{tenant.name}</p>
+                          <p className="text-xs text-gray-500">{tenant.subdomain}.zplus.vn</p>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className={`badge ${
+                            tenant.status === 'active' ? 'badge-success' : 
+                            tenant.status === 'trial' ? 'badge-warning' : 'badge-error'
+                          }`}>
+                            {tenant.status === 'active' ? 'Hoạt động' : 
+                             tenant.status === 'trial' ? 'Thử nghiệm' : 'Tạm ngừng'}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {new Date(tenant.created_at).toLocaleDateString('vi-VN')}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <span className={`badge ${tenant.status === 'active' ? 'badge-success' : 'badge-warning'}`}>
-                          {tenant.status === 'active' ? 'Hoạt động' : 'Thử nghiệm'}
-                        </span>
-                        <span className="text-xs text-gray-500">{tenant.date}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 

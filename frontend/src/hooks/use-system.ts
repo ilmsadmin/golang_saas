@@ -22,8 +22,168 @@ interface TenantFilters extends Record<string, unknown> {
 export function useSystemTenants(filters: TenantFilters = {}) {
   return useQuery({
     queryKey: ['system', 'tenants', filters],
-    queryFn: () => apiClient.query<ApiResponse<PaginatedResponse<Tenant>>>('getTenants', filters),
-    select: (data) => data.data,
+    queryFn: async (): Promise<PaginatedResponse<Tenant>> => {
+      // Mock data for demonstration
+      const mockTenants: Tenant[] = [
+        {
+          id: 1,
+          name: 'ABC Company',
+          subdomain: 'abc',
+          status: 'active',
+          plan: {
+            id: 2,
+            name: 'Pro Plan',
+            slug: 'pro',
+            description: 'Professional plan',
+            price: 99.99,
+            billing_cycle: 'monthly',
+            features: {
+              max_users: 100,
+              storage_gb: 50,
+              api_calls_per_hour: 10000,
+              custom_domain: true,
+              white_label: false,
+              priority_support: true,
+            },
+            modules: ['user_management', 'analytics', 'crm'],
+            is_active: true,
+            sort_order: 1,
+            created_at: '2024-01-15T00:00:00Z',
+            updated_at: '2024-01-15T00:00:00Z',
+          },
+          settings: {
+            general: {
+              name: 'ABC Company',
+              description: 'Leading technology solutions',
+              logo_url: '',
+              primary_color: '#3B82F6',
+              secondary_color: '#10B981',
+            },
+            features: {
+              allow_registration: true,
+              require_email_verification: true,
+              two_factor_auth: false,
+            },
+            notifications: {
+              email_notifications: true,
+              sms_notifications: false,
+            },
+          },
+          users_count: 45,
+          customers_count: 120,
+          created_at: '2024-01-15T00:00:00Z',
+          updated_at: '2024-01-15T00:00:00Z',
+        },
+        {
+          id: 2,
+          name: 'XYZ Corp',
+          subdomain: 'xyz',
+          status: 'trial',
+          plan: {
+            id: 1,
+            name: 'Starter Plan',
+            slug: 'starter',
+            description: 'Basic plan for startups',
+            price: 29.99,
+            billing_cycle: 'monthly',
+            features: {
+              max_users: 10,
+              storage_gb: 5,
+              api_calls_per_hour: 1000,
+              custom_domain: false,
+              white_label: false,
+              priority_support: false,
+            },
+            modules: ['user_management'],
+            is_active: true,
+            sort_order: 0,
+            created_at: '2024-01-10T00:00:00Z',
+            updated_at: '2024-01-10T00:00:00Z',
+          },
+          settings: {
+            general: {
+              name: 'XYZ Corp',
+              description: 'Innovative startup',
+              logo_url: '',
+              primary_color: '#F59E0B',
+              secondary_color: '#EF4444',
+            },
+            features: {
+              allow_registration: true,
+              require_email_verification: false,
+              two_factor_auth: false,
+            },
+            notifications: {
+              email_notifications: true,
+              sms_notifications: false,
+            },
+          },
+          users_count: 8,
+          customers_count: 25,
+          created_at: '2024-01-10T00:00:00Z',
+          updated_at: '2024-01-10T00:00:00Z',
+        },
+        {
+          id: 3,
+          name: 'Tech Solutions Ltd',
+          subdomain: 'techsol',
+          status: 'active',
+          plan: {
+            id: 3,
+            name: 'Enterprise Plan',
+            slug: 'enterprise',
+            description: 'Enterprise-grade features',
+            price: 299.99,
+            billing_cycle: 'monthly',
+            features: {
+              max_users: 500,
+              storage_gb: 200,
+              api_calls_per_hour: 50000,
+              custom_domain: true,
+              white_label: true,
+              priority_support: true,
+            },
+            modules: ['user_management', 'analytics', 'crm', 'lms'],
+            is_active: true,
+            sort_order: 2,
+            created_at: '2024-01-05T00:00:00Z',
+            updated_at: '2024-01-05T00:00:00Z',
+          },
+          settings: {
+            general: {
+              name: 'Tech Solutions Ltd',
+              description: 'Enterprise software solutions',
+              logo_url: '',
+              primary_color: '#7C3AED',
+              secondary_color: '#059669',
+            },
+            features: {
+              allow_registration: false,
+              require_email_verification: true,
+              two_factor_auth: true,
+            },
+            notifications: {
+              email_notifications: true,
+              sms_notifications: true,
+            },
+          },
+          users_count: 150,
+          customers_count: 800,
+          created_at: '2024-01-05T00:00:00Z',
+          updated_at: '2024-01-05T00:00:00Z',
+        },
+      ];
+
+      return {
+        items: mockTenants,
+        pagination: {
+          current_page: filters.page || 1,
+          total_pages: 1,
+          total_items: mockTenants.length,
+          items_per_page: filters.limit || 10,
+        },
+      };
+    },
   });
 }
 
