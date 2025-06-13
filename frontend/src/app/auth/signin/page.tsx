@@ -2,34 +2,57 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { signIn, getSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 
 export default function SignInPage() {
-  const [userType, setUserType] = useState<'system' | 'tenant' | 'customer'>('system');
+  const [userType, setUserType] = useState<'system' | 'tenant' | 'customer'>('customer');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError('');
     
-    // TODO: Implement actual authentication
-    console.log('Login attempt:', { userType, email, password });
-    
-    // Simulate API call
-    setTimeout(() => {
-      setLoading(false);
-      // Redirect based on user type
-      if (userType === 'system') {
-        window.location.href = '/admin/dashboard';
-      } else if (userType === 'tenant') {
-        window.location.href = '/admin/dashboard';
+    try {
+      const result = await signIn('credentials', {
+        email,
+        password,
+        userType,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        setError('Email hoặc mật khẩu không đúng');
       } else {
-        window.location.href = '/dashboard';
+        // Get the session to determine redirect path
+        const session = await getSession();
+        if (session?.user?.role) {
+          // Redirect based on user role
+          if (session.user.role === 'super_admin' || session.user.role === 'admin') {
+            router.push('/admin/dashboard');
+          } else if (session.user.role === 'tenant_admin') {
+            router.push('/tenant/dashboard');
+          } else {
+            router.push('/dashboard');
+          }
+        } else {
+          // Default redirect for customers
+          router.push('/dashboard');
+        }
       }
-    }, 1000);
+    } catch (err) {
+      setError('Đã xảy ra lỗi khi đăng nhập');
+      console.error('Login error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -53,6 +76,22 @@ export default function SignInPage() {
         {/* Login Form */}
         <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Error Message */}
+            {error && (
+              <div className="rounded-md bg-red-50 p-4">
+                <div className="flex">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <p className="text-sm text-red-800">{error}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* User Type Selection */}
             <div className="space-y-4">
               <label className="text-sm font-medium text-gray-700">Loại tài khoản</label>
@@ -159,6 +198,16 @@ export default function SignInPage() {
               placeholder="Nhập mật khẩu"
             />
 
+            {/* Demo Login Information */}
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <h4 className="text-sm font-medium text-blue-900 mb-2">Demo Login Information:</h4>
+              <div className="text-xs text-blue-700 space-y-1">
+                <p><strong>System Admin:</strong> admin@system.com / password</p>
+                <p><strong>Tenant Admin:</strong> admin@tenant.com / password</p>
+                <p><strong>Customer:</strong> customer@example.com / password</p>
+              </div>
+            </div>
+
             {/* Submit Button */}
             <Button
               type="submit"
@@ -182,8 +231,8 @@ export default function SignInPage() {
             </div>
 
             <div className="mt-6 text-center">
-              <Link href="/auth/register" className="text-blue-600 hover:text-blue-500">
-                Chưa có tài khoản? Đăng ký ngay
+              <Link href="/" className="text-blue-600 hover:text-blue-500">
+                ← Quay về trang chủ
               </Link>
             </div>
           </div>

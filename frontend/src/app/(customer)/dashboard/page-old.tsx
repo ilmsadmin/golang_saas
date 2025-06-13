@@ -2,36 +2,8 @@
 
 import React from 'react';
 import { Sidebar } from '@/components/layouts/Sidebar';
-import { useCustomerProfile, useCustomerServices, useRecentBilling, useDashboardStats } from '@/hooks/use-customer';
-import { useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
 
 export default function CustomerDashboard() {
-  const { data: session, status } = useSession();
-  const router = useRouter();
-  const { data: profile, isLoading: profileLoading } = useCustomerProfile();
-  const { data: services, isLoading: servicesLoading } = useCustomerServices();
-  const { data: bills, isLoading: billsLoading } = useRecentBilling();
-
-  // Redirect to login if not authenticated
-  React.useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/auth/signin');
-    }
-  }, [status, router]);
-
-  if (status === 'loading' || profileLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="loading-spinner"></div>
-      </div>
-    );
-  }
-
-  if (!session) {
-    return null;
-  }
-
   const sidebarItems = [
     {
       name: 'Dashboard',
@@ -82,19 +54,14 @@ export default function CustomerDashboard() {
   ];
 
   const userInfo = {
-    name: profile?.name || session.user.name || 'Người dùng',
-    email: profile?.email || session.user.email || '',
-    avatar: profile?.avatar,
+    name: 'Nguyễn Văn A',
+    email: 'customer@company.com',
   };
 
   const handleLogout = () => {
-    router.push('/api/auth/signout');
+    // TODO: Implement logout logic
+    window.location.href = '/auth/signin';
   };
-
-  // Calculate stats from real data
-  const activeServicesCount = services?.filter(s => s.status === 'active').length || 0;
-  const paidBillsCount = bills?.filter(b => b.status === 'paid').length || 0;
-  const pendingBillsCount = bills?.filter(b => b.status === 'pending').length || 0;
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -111,7 +78,7 @@ export default function CustomerDashboard() {
           {/* Header */}
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-gray-900">Customer Dashboard</h1>
-            <p className="text-gray-600">Chào mừng {userInfo.name} đã quay trở lại</p>
+            <p className="text-gray-600">Chào mừng bạn đã quay trở lại</p>
           </div>
 
           {/* Stats Cards */}
@@ -124,9 +91,7 @@ export default function CustomerDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    {servicesLoading ? '...' : activeServicesCount}
-                  </h3>
+                  <h3 className="text-lg font-semibold text-gray-900">3</h3>
                   <p className="text-sm text-gray-500">Dịch vụ đang dùng</p>
                 </div>
               </div>
@@ -140,9 +105,7 @@ export default function CustomerDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    {billsLoading ? '...' : paidBillsCount}
-                  </h3>
+                  <h3 className="text-lg font-semibold text-gray-900">2</h3>
                   <p className="text-sm text-gray-500">Hóa đơn đã thanh toán</p>
                 </div>
               </div>
@@ -156,9 +119,7 @@ export default function CustomerDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    {billsLoading ? '...' : pendingBillsCount}
-                  </h3>
+                  <h3 className="text-lg font-semibold text-gray-900">1</h3>
                   <p className="text-sm text-gray-500">Hóa đơn chờ thanh toán</p>
                 </div>
               </div>
@@ -187,28 +148,24 @@ export default function CustomerDashboard() {
                 <h3 className="text-lg font-medium text-gray-900">Dịch vụ đang sử dụng</h3>
               </div>
               <div className="p-6">
-                {servicesLoading ? (
-                  <div className="flex justify-center py-4">
-                    <div className="loading-spinner"></div>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {services?.map((service) => (
-                      <div key={service.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{service.name}</p>
-                          <p className="text-xs text-gray-500">Hết hạn: {new Date(service.expires_at).toLocaleDateString('vi-VN')}</p>
-                        </div>
-                        <div className="text-right">
-                          <span className={`badge ${service.status === 'active' ? 'badge-success' : 'badge-warning'}`}>
-                            {service.status === 'active' ? 'Hoạt động' : 'Tạm dừng'}
-                          </span>
-                          <p className="text-xs text-gray-500 mt-1">Sử dụng: {service.usage_percentage}%</p>
-                        </div>
+                <div className="space-y-4">
+                  {[
+                    { name: 'Email Marketing Pro', status: 'active', usage: '85%', expires: '2024-12-31' },
+                    { name: 'CRM Advanced', status: 'active', usage: '62%', expires: '2024-11-15' },
+                    { name: 'Analytics Basic', status: 'active', usage: '45%', expires: '2024-10-20' },
+                  ].map((service, index) => (
+                    <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{service.name}</p>
+                        <p className="text-xs text-gray-500">Hết hạn: {service.expires}</p>
                       </div>
-                    ))}
-                  </div>
-                )}
+                      <div className="text-right">
+                        <span className="badge badge-success">Hoạt động</span>
+                        <p className="text-xs text-gray-500 mt-1">Sử dụng: {service.usage}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -218,30 +175,26 @@ export default function CustomerDashboard() {
                 <h3 className="text-lg font-medium text-gray-900">Hóa đơn gần đây</h3>
               </div>
               <div className="p-6">
-                {billsLoading ? (
-                  <div className="flex justify-center py-4">
-                    <div className="loading-spinner"></div>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {bills?.map((bill) => (
-                      <div key={bill.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{bill.description}</p>
-                          <p className="text-xs text-gray-500">{new Date(bill.created_at).toLocaleDateString('vi-VN')}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-medium text-gray-900">
-                            {(bill.amount / 1000).toLocaleString('vi-VN')} VND
-                          </p>
-                          <span className={`badge ${bill.status === 'paid' ? 'badge-success' : 'badge-warning'}`}>
-                            {bill.status === 'paid' ? 'Đã thanh toán' : 'Chờ thanh toán'}
-                          </span>
-                        </div>
+                <div className="space-y-4">
+                  {[
+                    { date: '2024-01-15', amount: '1.500.000 VND', status: 'paid', service: 'Email Marketing Pro' },
+                    { date: '2024-01-10', amount: '2.200.000 VND', status: 'paid', service: 'CRM Advanced' },
+                    { date: '2024-01-05', amount: '800.000 VND', status: 'pending', service: 'Analytics Basic' },
+                  ].map((bill, index) => (
+                    <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{bill.service}</p>
+                        <p className="text-xs text-gray-500">{bill.date}</p>
                       </div>
-                    ))}
-                  </div>
-                )}
+                      <div className="text-right">
+                        <p className="text-sm font-medium text-gray-900">{bill.amount}</p>
+                        <span className={`badge ${bill.status === 'paid' ? 'badge-success' : 'badge-warning'}`}>
+                          {bill.status === 'paid' ? 'Đã thanh toán' : 'Chờ thanh toán'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
