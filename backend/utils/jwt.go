@@ -7,23 +7,29 @@ import (
 	"golang_saas/config"
 
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/google/uuid"
 )
 
 type Claims struct {
-	UserID      uint     `json:"user_id"`
-	TenantID    uint     `json:"tenant_id"`
+	UserID      string   `json:"user_id"`   // UUID as string
+	TenantID    string   `json:"tenant_id"` // UUID as string
 	Role        string   `json:"role"`
 	Permissions []string `json:"permissions"`
 	IsSystem    bool     `json:"is_system"`
 	jwt.RegisteredClaims
 }
 
-func GenerateJWT(userID, tenantID uint, role string, permissions []string, isSystem bool) (string, error) {
+func GenerateJWT(userID, tenantID uuid.UUID, role string, permissions []string, isSystem bool) (string, error) {
 	expirationTime := time.Now().Add(time.Duration(config.AppConfig.JWTExpireHours) * time.Hour)
-	
+
+	var tenantIDStr string
+	if tenantID != uuid.Nil {
+		tenantIDStr = tenantID.String()
+	}
+
 	claims := &Claims{
-		UserID:      userID,
-		TenantID:    tenantID,
+		UserID:      userID.String(),
+		TenantID:    tenantIDStr,
 		Role:        role,
 		Permissions: permissions,
 		IsSystem:    isSystem,
@@ -38,12 +44,17 @@ func GenerateJWT(userID, tenantID uint, role string, permissions []string, isSys
 	return token.SignedString([]byte(config.AppConfig.JWTSecret))
 }
 
-func GenerateRefreshJWT(userID, tenantID uint) (string, error) {
+func GenerateRefreshJWT(userID, tenantID uuid.UUID) (string, error) {
 	expirationTime := time.Now().Add(time.Duration(config.AppConfig.JWTRefreshExpireHours) * time.Hour)
-	
+
+	var tenantIDStr string
+	if tenantID != uuid.Nil {
+		tenantIDStr = tenantID.String()
+	}
+
 	claims := &Claims{
-		UserID:   userID,
-		TenantID: tenantID,
+		UserID:   userID.String(),
+		TenantID: tenantIDStr,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expirationTime),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -57,7 +68,7 @@ func GenerateRefreshJWT(userID, tenantID uint) (string, error) {
 
 func ValidateJWT(tokenString string) (*Claims, error) {
 	claims := &Claims{}
-	
+
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.New("unexpected signing method")
@@ -82,14 +93,28 @@ func RefreshJWT(refreshToken string) (string, string, error) {
 		return "", "", err
 	}
 
+	// Parse UUIDs from claims
+	userID, err := uuid.Parse(claims.UserID)
+	if err != nil {
+		return "", "", errors.New("invalid user ID in token")
+	}
+
+	var tenantID uuid.UUID
+	if claims.TenantID != "" {
+		tenantID, err = uuid.Parse(claims.TenantID)
+		if err != nil {
+			return "", "", errors.New("invalid tenant ID in token")
+		}
+	}
+
 	// Generate new access token
-	accessToken, err := GenerateJWT(claims.UserID, claims.TenantID, claims.Role, claims.Permissions, claims.IsSystem)
+	accessToken, err := GenerateJWT(userID, tenantID, claims.Role, claims.Permissions, claims.IsSystem)
 	if err != nil {
 		return "", "", err
 	}
 
 	// Generate new refresh token
-	newRefreshToken, err := GenerateRefreshJWT(claims.UserID, claims.TenantID)
+	newRefreshToken, err := GenerateRefreshJWT(userID, tenantID)
 	if err != nil {
 		return "", "", err
 	}

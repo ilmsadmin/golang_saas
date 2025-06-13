@@ -51,28 +51,67 @@ export const authOptions: AuthOptions = {
         }
 
         try {
-          const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
-          const endpoint = getAuthEndpoint(credentials.userType as string);
+          const graphqlUrl = process.env.NEXT_PUBLIC_GRAPHQL_URL || 'http://localhost:8081/graphql';
           
-          const response = await fetch(`${baseUrl}${endpoint}`, {
+          const response = await fetch(graphqlUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              email: credentials.email,
-              password: credentials.password,
-            } as LoginRequest),
+              query: `
+                mutation Login($input: LoginInput!) {
+                  login(input: $input) {
+                    token
+                    refreshToken
+                    user {
+                      id
+                      email
+                      firstName
+                      lastName
+                      isActive
+                      role {
+                        id
+                        name
+                      }
+                      tenantId
+                      tenant {
+                        id
+                        name
+                        slug
+                      }
+                      permissions {
+                        id
+                        name
+                        resource
+                        action
+                      }
+                    }
+                  }
+                }
+              `,
+              variables: {
+                input: {
+                  email: credentials.email,
+                  password: credentials.password,
+                  tenantSlug: credentials.userType === 'tenant' ? getSubdomainFromHost() : undefined,
+                }
+              }
+            }),
           });
 
-          if (response.ok) {
-            const data: LoginResponse = await response.json();
+          const result = await response.json();
+          
+          if (result.data?.login) {
+            const { user, token } = result.data.login;
+            const permissions = user.permissions?.map((p: any) => `${p.resource}:${p.action}`) || [];
+            
             return {
-              id: data.user.id.toString(),
-              email: data.user.email,
-              name: `${(data.user as any).first_name || ''} ${(data.user as any).last_name || ''}`.trim() || data.user.email,
-              role: (data.user as any).role || 'customer',
-              tenantId: (data.user as any).tenant_id,
-              accessToken: data.token,
-              permissions: data.permissions,
+              id: user.id,
+              email: user.email,
+              name: `${user.firstName} ${user.lastName}`.trim() || user.email,
+              role: user.role?.name || 'customer',
+              tenantId: user.tenantId,
+              accessToken: token,
+              permissions: permissions,
             };
           }
         } catch (error) {
@@ -122,6 +161,13 @@ function getAuthEndpoint(userType: string): string {
     default:
       return '/auth/login';
   }
+}
+
+function getSubdomainFromHost(): string | null {
+  if (typeof window === 'undefined') return null;
+  const hostname = window.location.hostname;
+  const parts = hostname.split('.');
+  return parts.length >= 3 ? parts[0] : null;
 }
 
 export default NextAuth(authOptions);

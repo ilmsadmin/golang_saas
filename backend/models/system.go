@@ -3,104 +3,149 @@ package models
 import (
 	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
-// System-wide models (public schema)
+// BaseModel contains common fields for all models
+type BaseModel struct {
+	ID        uuid.UUID      `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	CreatedAt time.Time      `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt time.Time      `json:"updated_at" gorm:"autoUpdateTime"`
+	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
+}
 
+// BeforeCreate sets UUID before creating record
+func (base *BaseModel) BeforeCreate(tx *gorm.DB) error {
+	if base.ID == uuid.Nil {
+		base.ID = uuid.New()
+	}
+	return nil
+}
+
+// User represents a user in the system
+type User struct {
+	BaseModel
+	Email     string     `json:"email" gorm:"uniqueIndex;not null"`
+	FirstName string     `json:"first_name" gorm:"not null"`
+	LastName  string     `json:"last_name" gorm:"not null"`
+	Password  string     `json:"-" gorm:"not null"`
+	IsActive  bool       `json:"is_active" gorm:"default:true"`
+	TenantID  *uuid.UUID `json:"tenant_id" gorm:"type:uuid;index"`
+	RoleID    uuid.UUID  `json:"role_id" gorm:"type:uuid;not null"`
+
+	// Relations
+	Tenant      *Tenant      `json:"tenant,omitempty" gorm:"foreignKey:TenantID"`
+	Role        Role         `json:"role" gorm:"foreignKey:RoleID"`
+	Permissions []Permission `json:"permissions,omitempty" gorm:"many2many:user_permissions;"`
+}
+
+// Role represents a role in RBAC system
+type Role struct {
+	BaseModel
+	Name         string     `json:"name" gorm:"not null"`
+	Description  *string    `json:"description"`
+	IsSystemRole bool       `json:"is_system_role" gorm:"default:false"`
+	TenantID     *uuid.UUID `json:"tenant_id" gorm:"type:uuid;index"`
+
+	// Relations
+	Tenant      *Tenant      `json:"tenant,omitempty" gorm:"foreignKey:TenantID"`
+	Users       []User       `json:"users,omitempty" gorm:"foreignKey:RoleID"`
+	Permissions []Permission `json:"permissions,omitempty" gorm:"many2many:role_permissions;"`
+}
+
+// Permission represents a permission in RBAC system
+type Permission struct {
+	BaseModel
+	Name               string  `json:"name" gorm:"not null"`
+	Resource           string  `json:"resource" gorm:"not null"`
+	Action             string  `json:"action" gorm:"not null"`
+	Description        *string `json:"description"`
+	IsSystemPermission bool    `json:"is_system_permission" gorm:"default:false"`
+
+	// Relations
+	Roles []Role `json:"roles,omitempty" gorm:"many2many:role_permissions;"`
+	Users []User `json:"users,omitempty" gorm:"many2many:user_permissions;"`
+}
+
+// TenantStatus enum
+type TenantStatus string
+
+const (
+	TenantStatusActive    TenantStatus = "ACTIVE"
+	TenantStatusInactive  TenantStatus = "INACTIVE"
+	TenantStatusSuspended TenantStatus = "SUSPENDED"
+	TenantStatusPending   TenantStatus = "PENDING"
+)
+
+// Tenant represents a tenant in the multi-tenant system
 type Tenant struct {
-	ID             uint           `json:"id" gorm:"primaryKey"`
-	Name           string         `json:"name" gorm:"not null"`
-	Subdomain      string         `json:"subdomain" gorm:"uniqueIndex;not null"`
-	CustomDomains  datatypes.JSON `json:"custom_domains" gorm:"type:jsonb"`
-	PlanID         uint           `json:"plan_id"`
-	Plan           Plan           `json:"plan" gorm:"foreignKey:PlanID"`
-	Status         string         `json:"status" gorm:"default:active"`
-	Settings       datatypes.JSON `json:"settings" gorm:"type:jsonb"`
-	BillingInfo    datatypes.JSON `json:"billing_info" gorm:"type:jsonb"`
-	ResourceLimits datatypes.JSON `json:"resource_limits" gorm:"type:jsonb"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
-	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index"`
+	BaseModel
+	Name      string                 `json:"name" gorm:"not null"`
+	Slug      string                 `json:"slug" gorm:"uniqueIndex;not null"`
+	Domain    *string                `json:"domain"`
+	Subdomain string                 `json:"subdomain" gorm:"uniqueIndex;not null"`
+	Status    TenantStatus           `json:"status" gorm:"default:ACTIVE"`
+	Settings  datatypes.JSON         `json:"settings" gorm:"type:jsonb"`
+
+	// Relations
+	Users        []User         `json:"users,omitempty" gorm:"foreignKey:TenantID"`
+	Roles        []Role         `json:"roles,omitempty" gorm:"foreignKey:TenantID"`
+	Subscription *Subscription  `json:"subscription,omitempty" gorm:"foreignKey:TenantID"`
 }
 
+// SubscriptionStatus enum
+type SubscriptionStatus string
+
+const (
+	SubscriptionStatusActive   SubscriptionStatus = "ACTIVE"
+	SubscriptionStatusCancelled SubscriptionStatus = "CANCELLED"
+	SubscriptionStatusPastDue   SubscriptionStatus = "PAST_DUE"
+	SubscriptionStatusUnpaid    SubscriptionStatus = "UNPAID"
+)
+
+// Subscription represents a tenant's subscription
+type Subscription struct {
+	BaseModel
+	TenantID            uuid.UUID          `json:"tenant_id" gorm:"type:uuid;not null;index"`
+	PlanID              uuid.UUID          `json:"plan_id" gorm:"type:uuid;not null"`
+	Status              SubscriptionStatus `json:"status" gorm:"default:ACTIVE"`
+	CurrentPeriodStart  time.Time          `json:"current_period_start" gorm:"not null"`
+	CurrentPeriodEnd    time.Time          `json:"current_period_end" gorm:"not null"`
+
+	// Relations
+	Tenant Tenant `json:"tenant" gorm:"foreignKey:TenantID"`
+	Plan   Plan   `json:"plan" gorm:"foreignKey:PlanID"`
+}
+
+// Plan represents a subscription plan
 type Plan struct {
-	ID          uint           `json:"id" gorm:"primaryKey"`
-	Name        string         `json:"name" gorm:"not null"`
-	Price       float64        `json:"price" gorm:"type:decimal(10,2)"`
-	BillingCycle string        `json:"billing_cycle" gorm:"default:monthly"`
-	Features    datatypes.JSON `json:"features" gorm:"type:jsonb"`
-	MaxUsers    int            `json:"max_users"`
-	StorageGB   int            `json:"storage_gb"`
-	IsActive    bool           `json:"is_active" gorm:"default:true"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
+	BaseModel
+	Name        string                 `json:"name" gorm:"not null"`
+	Description *string                `json:"description"`
+	Price       float64                `json:"price" gorm:"not null"`
+	Features    datatypes.JSON         `json:"features" gorm:"type:jsonb"`
+	MaxUsers    int                    `json:"max_users" gorm:"default:10"`
+
+	// Relations
+	Subscriptions []Subscription `json:"subscriptions,omitempty" gorm:"foreignKey:PlanID"`
 }
 
-type Module struct {
-	ID                  string         `json:"id" gorm:"primaryKey"`
-	Name                string         `json:"name" gorm:"not null"`
-	Description         string         `json:"description"`
-	Version             string         `json:"version" gorm:"default:1.0.0"`
-	IsActive            bool           `json:"is_active" gorm:"default:true"`
-	ConfigurationSchema datatypes.JSON `json:"configuration_schema" gorm:"type:jsonb"`
-	Dependencies        datatypes.JSON `json:"dependencies" gorm:"type:jsonb"`
-	Pricing             datatypes.JSON `json:"pricing" gorm:"type:jsonb"`
-	CreatedAt           time.Time      `json:"created_at"`
-	UpdatedAt           time.Time      `json:"updated_at"`
+// SystemSettings represents system-wide configuration
+type SystemSettings struct {
+	BaseModel
+	Key         string         `json:"key" gorm:"uniqueIndex;not null"`
+	Value       datatypes.JSON `json:"value" gorm:"type:jsonb"`
+	Description *string        `json:"description"`
 }
 
-type TenantModule struct {
-	TenantID      uint           `json:"tenant_id" gorm:"primaryKey"`
-	ModuleID      string         `json:"module_id" gorm:"primaryKey"`
-	Tenant        Tenant         `json:"tenant" gorm:"foreignKey:TenantID"`
-	Module        Module         `json:"module" gorm:"foreignKey:ModuleID"`
-	IsEnabled     bool           `json:"is_enabled" gorm:"default:true"`
-	Configuration datatypes.JSON `json:"configuration" gorm:"type:jsonb"`
-	EnabledAt     time.Time      `json:"enabled_at"`
-}
+// UserRole enum for backward compatibility
+type UserRole string
 
-type SystemUser struct {
-	ID           uint           `json:"id" gorm:"primaryKey"`
-	Email        string         `json:"email" gorm:"uniqueIndex;not null"`
-	PasswordHash string         `json:"-" gorm:"not null"`
-	FirstName    string         `json:"first_name"`
-	LastName     string         `json:"last_name"`
-	Role         string         `json:"role" gorm:"not null"`
-	IsActive     bool           `json:"is_active" gorm:"default:true"`
-	LastLoginAt  *time.Time     `json:"last_login_at"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
-	DeletedAt    gorm.DeletedAt `json:"-" gorm:"index"`
-}
-
-type DomainMapping struct {
-	ID           uint           `json:"id" gorm:"primaryKey"`
-	Domain       string         `json:"domain" gorm:"uniqueIndex;not null"`
-	TenantID     uint           `json:"tenant_id"`
-	Tenant       Tenant         `json:"tenant" gorm:"foreignKey:TenantID"`
-	IsPrimary    bool           `json:"is_primary" gorm:"default:false"`
-	SSLEnabled   bool           `json:"ssl_enabled" gorm:"default:false"`
-	SSLCert      string         `json:"ssl_certificate"`
-	Status       string         `json:"status" gorm:"default:pending"`
-	VerifiedAt   *time.Time     `json:"verified_at"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
-	DeletedAt    gorm.DeletedAt `json:"-" gorm:"index"`
-}
-
-type SystemAuditLog struct {
-	ID          uint           `json:"id" gorm:"primaryKey"`
-	UserID      uint           `json:"user_id"`
-	User        SystemUser     `json:"user" gorm:"foreignKey:UserID"`
-	Action      string         `json:"action" gorm:"not null"`
-	Resource    string         `json:"resource" gorm:"not null"`
-	ResourceID  string         `json:"resource_id"`
-	OldValues   datatypes.JSON `json:"old_values" gorm:"type:jsonb"`
-	NewValues   datatypes.JSON `json:"new_values" gorm:"type:jsonb"`
-	IPAddress   string         `json:"ip_address"`
-	UserAgent   string         `json:"user_agent"`
-	CreatedAt   time.Time      `json:"created_at"`
-}
+const (
+	UserRoleSystemAdmin UserRole = "SYSTEM_ADMIN"
+	UserRoleTenantAdmin UserRole = "TENANT_ADMIN"
+	UserRoleTenantUser  UserRole = "TENANT_USER"
+	UserRoleCustomer    UserRole = "CUSTOMER"
+)

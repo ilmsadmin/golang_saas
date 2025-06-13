@@ -3,11 +3,12 @@
 import React from 'react';
 import { Sidebar } from '@/components/layouts/Sidebar';
 import { useCustomerProfile, useCustomerServices, useRecentBilling, useDashboardStats } from '@/hooks/use-customer';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 
 export default function CustomerDashboard() {
-  const { data: session, status } = useSession();
+  const { isAuthenticated, storedUser, isLoading, logout } = useAuth();
   const router = useRouter();
   const { data: profile, isLoading: profileLoading } = useCustomerProfile();
   const { data: services, isLoading: servicesLoading } = useCustomerServices();
@@ -15,12 +16,12 @@ export default function CustomerDashboard() {
 
   // Redirect to login if not authenticated
   React.useEffect(() => {
-    if (status === 'unauthenticated') {
+    if (!isLoading && !isAuthenticated) {
       router.push('/auth/signin');
     }
-  }, [status, router]);
+  }, [isLoading, isAuthenticated, router]);
 
-  if (status === 'loading' || profileLoading) {
+  if (isLoading || profileLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
         <div className="loading-spinner"></div>
@@ -28,7 +29,7 @@ export default function CustomerDashboard() {
     );
   }
 
-  if (!session) {
+  if (!isAuthenticated || !storedUser) {
     return null;
   }
 
@@ -82,13 +83,19 @@ export default function CustomerDashboard() {
   ];
 
   const userInfo = {
-    name: profile?.name || session.user.name || 'Người dùng',
-    email: profile?.email || session.user.email || '',
+    name: profile?.name || (storedUser ? `${storedUser.firstName} ${storedUser.lastName}` : 'Người dùng'),
+    email: profile?.email || storedUser?.email || '',
     avatar: profile?.avatar,
   };
 
-  const handleLogout = () => {
-    router.push('/api/auth/signout');
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Fallback to manual redirect if logout fails
+      router.push('/auth/signin');
+    }
   };
 
   // Calculate stats from real data
@@ -97,16 +104,17 @@ export default function CustomerDashboard() {
   const pendingBillsCount = bills?.filter(b => b.status === 'pending').length || 0;
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      <Sidebar
-        title="Customer Portal"
-        items={sidebarItems}
-        userInfo={userInfo}
-        onLogout={handleLogout}
-      />
-      
-      {/* Main Content */}
-      <div className="flex-1 overflow-auto">
+    <ProtectedRoute requiredRole={['customer', 'tenant_user']}>
+      <div className="flex h-screen bg-gray-100">
+        <Sidebar
+          title="Customer Portal"
+          items={sidebarItems}
+          userInfo={userInfo}
+          onLogout={handleLogout}
+        />
+        
+        {/* Main Content */}
+        <div className="flex-1 overflow-auto">
         <div className="p-6">
           {/* Header */}
           <div className="mb-6">
@@ -288,5 +296,6 @@ export default function CustomerDashboard() {
         </div>
       </div>
     </div>
+    </ProtectedRoute>
   );
 }

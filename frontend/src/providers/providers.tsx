@@ -1,7 +1,6 @@
 'use client';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { SessionProvider } from 'next-auth/react';
 import { ApolloProvider } from '@apollo/client';
 import { apolloClient } from '@/lib/apollo-client';
 import { TenantProvider } from './tenant-provider';
@@ -33,15 +32,13 @@ export function Providers({ children }: ProvidersProps) {
   );
 
   return (
-    <SessionProvider>
-      <ApolloProvider client={apolloClient}>
-        <QueryClientProvider client={queryClient}>
-          <TenantProvider>
-            {children}
-            {process.env.NODE_ENV === 'development' && <ReactQueryDevtools />}
-          </TenantProvider>
-        </QueryClientProvider>
-      </ApolloProvider>
-    </SessionProvider>
+    <ApolloProvider client={apolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <TenantProvider>
+          {children}
+          {process.env.NODE_ENV === 'development' && <ReactQueryDevtools />}
+        </TenantProvider>
+      </QueryClientProvider>
+    </ApolloProvider>
   );
 }

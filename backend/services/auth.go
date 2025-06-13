@@ -2,12 +2,12 @@ package services
 
 import (
 	"errors"
-	"time"
 
 	"golang_saas/config"
 	"golang_saas/models"
 	"golang_saas/utils"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -26,62 +26,31 @@ type LoginRequest struct {
 	Password string `json:"password" validate:"required"`
 }
 
-type LoginResponse struct {
-	Token        string      `json:"token"`
-	RefreshToken string      `json:"refresh_token"`
-	User         interface{} `json:"user"`
-	Permissions  []string    `json:"permissions"`
+type RegisterRequest struct {
+	Email     string     `json:"email" validate:"required,email"`
+	Password  string     `json:"password" validate:"required,min=8"`
+	FirstName string     `json:"first_name" validate:"required"`
+	LastName  string     `json:"last_name" validate:"required"`
+	TenantID  *uuid.UUID `json:"tenant_id,omitempty"`
 }
 
-func (s *AuthService) SystemLogin(req LoginRequest) (*LoginResponse, error) {
-	var user models.SystemUser
-	err := s.db.Where("email = ? AND is_active = ?", req.Email, true).First(&user).Error
-	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return nil, errors.New("invalid credentials")
-		}
-		return nil, err
-	}
-
-	// Check password
-	if !utils.CheckPasswordHash(req.Password, user.PasswordHash) {
-		return nil, errors.New("invalid credentials")
-	}
-
-	// Update last login
-	user.LastLoginAt = &time.Time{}
-	*user.LastLoginAt = time.Now()
-	s.db.Save(&user)
-
-	// Generate permissions based on role
-	permissions := s.getSystemPermissions(user.Role)
-
-	// Generate JWT tokens
-	token, err := utils.GenerateJWT(user.ID, 0, user.Role, permissions, true)
-	if err != nil {
-		return nil, err
-	}
-
-	refreshToken, err := utils.GenerateRefreshJWT(user.ID, 0)
-	if err != nil {
-		return nil, err
-	}
-
-	return &LoginResponse{
-		Token:        token,
-		RefreshToken: refreshToken,
-		User:         user,
-		Permissions:  permissions,
-	}, nil
+type AuthResponse struct {
+	Token        string       `json:"token"`
+	RefreshToken string       `json:"refresh_token"`
+	User         *models.User `json:"user"`
+	Permissions  []string     `json:"permissions"`
 }
 
-func (s *AuthService) TenantLogin(req LoginRequest, tenantID uint) (*LoginResponse, error) {
-	tenantDB := config.GetTenantDB(tenantID)
-	
+func (s *AuthService) Login(req LoginRequest, tenantID *uuid.UUID) (*AuthResponse, error) {
 	var user models.User
-	err := tenantDB.Where("email = ? AND is_active = ?", req.Email, true).
-		Preload("Role").
-		First(&user).Error
+
+	query := s.db.Preload("Role").Preload("Role.Permissions").Where("email = ? AND is_active = ?", req.Email, true)
+
+	if tenantID != nil {
+		query = query.Where("tenant_id = ?", *tenantID)
+	}
+
+	err := query.First(&user).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, errors.New("invalid credentials")
@@ -90,153 +59,149 @@ func (s *AuthService) TenantLogin(req LoginRequest, tenantID uint) (*LoginRespon
 	}
 
 	// Check password
-	if !utils.CheckPasswordHash(req.Password, user.PasswordHash) {
+	if !utils.CheckPasswordHash(req.Password, user.Password) {
 		return nil, errors.New("invalid credentials")
 	}
 
-	// Update last login
-	user.LastLoginAt = &time.Time{}
-	*user.LastLoginAt = time.Now()
-	tenantDB.Save(&user)
-
-	// Get user permissions
-	permissions := user.GetPermissions()
+	// Get permissions
+	permissions := make([]string, 0)
+	for _, perm := range user.Role.Permissions {
+		permissions = append(permissions, perm.Name)
+	}
 
 	// Generate JWT tokens
-	token, err := utils.GenerateJWT(user.ID, tenantID, user.Role.Name, permissions, false)
+	var tenantUUID uuid.UUID
+	if user.TenantID != nil {
+		tenantUUID = *user.TenantID
+	}
+
+	// Determine if system user (no tenant)
+	isSystem := user.TenantID == nil
+
+	token, err := utils.GenerateJWT(user.ID, tenantUUID, user.Role.Name, permissions, isSystem)
 	if err != nil {
 		return nil, err
 	}
 
-	refreshToken, err := utils.GenerateRefreshJWT(user.ID, tenantID)
+	refreshToken, err := utils.GenerateRefreshJWT(user.ID, tenantUUID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Create user session
-	session := models.UserSession{
-		UserID:       user.ID,
-		RefreshToken: refreshToken,
-		ExpiresAt:    time.Now().Add(time.Duration(config.AppConfig.JWTRefreshExpireHours) * time.Hour),
-	}
-	tenantDB.Create(&session)
-
-	return &LoginResponse{
+	return &AuthResponse{
 		Token:        token,
 		RefreshToken: refreshToken,
-		User:         user,
+		User:         &user,
 		Permissions:  permissions,
 	}, nil
 }
 
-func (s *AuthService) RefreshToken(refreshToken string) (*LoginResponse, error) {
-	claims, err := utils.ValidateJWT(refreshToken)
+func (s *AuthService) Register(req RegisterRequest) (*AuthResponse, error) {
+	// Check if user exists
+	var existingUser models.User
+	err := s.db.Where("email = ?", req.Email).First(&existingUser).Error
+	if err == nil {
+		return nil, errors.New("user already exists")
+	}
+	if err != gorm.ErrRecordNotFound {
+		return nil, err
+	}
+
+	// Hash password
+	hashedPassword, err := utils.HashPassword(req.Password)
 	if err != nil {
 		return nil, err
 	}
 
-	if claims.IsSystem {
-		// System user refresh
-		var user models.SystemUser
-		err := s.db.Where("id = ? AND is_active = ?", claims.UserID, true).First(&user).Error
-		if err != nil {
-			return nil, errors.New("user not found")
-		}
-
-		permissions := s.getSystemPermissions(user.Role)
-		
-		token, err := utils.GenerateJWT(user.ID, 0, user.Role, permissions, true)
-		if err != nil {
-			return nil, err
-		}
-
-		newRefreshToken, err := utils.GenerateRefreshJWT(user.ID, 0)
-		if err != nil {
-			return nil, err
-		}
-
-		return &LoginResponse{
-			Token:        token,
-			RefreshToken: newRefreshToken,
-			User:         user,
-			Permissions:  permissions,
-		}, nil
-	} else {
-		// Tenant user refresh
-		tenantDB := config.GetTenantDB(claims.TenantID)
-		
-		// Check if refresh token exists and is valid
-		var session models.UserSession
-		err := tenantDB.Where("refresh_token = ? AND expires_at > ? AND revoked_at IS NULL", 
-			refreshToken, time.Now()).First(&session).Error
-		if err != nil {
-			return nil, errors.New("invalid refresh token")
-		}
-
-		var user models.User
-		err = tenantDB.Where("id = ? AND is_active = ?", claims.UserID, true).
-			Preload("Role").
-			First(&user).Error
-		if err != nil {
-			return nil, errors.New("user not found")
-		}
-
-		permissions := user.GetPermissions()
-		
-		token, err := utils.GenerateJWT(user.ID, claims.TenantID, user.Role.Name, permissions, false)
-		if err != nil {
-			return nil, err
-		}
-
-		newRefreshToken, err := utils.GenerateRefreshJWT(user.ID, claims.TenantID)
-		if err != nil {
-			return nil, err
-		}
-
-		// Update session
-		session.RefreshToken = newRefreshToken
-		session.ExpiresAt = time.Now().Add(time.Duration(config.AppConfig.JWTRefreshExpireHours) * time.Hour)
-		tenantDB.Save(&session)
-
-		return &LoginResponse{
-			Token:        token,
-			RefreshToken: newRefreshToken,
-			User:         user,
-			Permissions:  permissions,
-		}, nil
-	}
-}
-
-func (s *AuthService) Logout(refreshToken string) error {
-	claims, err := utils.ValidateJWT(refreshToken)
+	// Get default role
+	var defaultRole models.Role
+	err = s.db.Where("name = ?", "tenant_user").First(&defaultRole).Error
 	if err != nil {
-		return err
+		return nil, errors.New("default role not found")
 	}
 
-	if !claims.IsSystem {
-		// Revoke tenant user session
-		tenantDB := config.GetTenantDB(claims.TenantID)
-		now := time.Now()
-		tenantDB.Model(&models.UserSession{}).
-			Where("refresh_token = ?", refreshToken).
-			Update("revoked_at", &now)
+	// Create user
+	user := models.User{
+		Email:     req.Email,
+		Password:  hashedPassword,
+		FirstName: req.FirstName,
+		LastName:  req.LastName,
+		IsActive:  true,
+		TenantID:  req.TenantID,
+		RoleID:    defaultRole.ID,
 	}
 
-	return nil
+	err = s.db.Create(&user).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Load relationships
+	err = s.db.Preload("Role").Preload("Role.Permissions").First(&user, user.ID).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Get permissions
+	permissions := make([]string, 0)
+	for _, perm := range user.Role.Permissions {
+		permissions = append(permissions, perm.Name)
+	}
+
+	// Generate JWT tokens
+	var tenantUUID uuid.UUID
+	if user.TenantID != nil {
+		tenantUUID = *user.TenantID
+	}
+
+	isSystem := user.TenantID == nil
+
+	token, err := utils.GenerateJWT(user.ID, tenantUUID, user.Role.Name, permissions, isSystem)
+	if err != nil {
+		return nil, err
+	}
+
+	refreshToken, err := utils.GenerateRefreshJWT(user.ID, tenantUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &AuthResponse{
+		Token:        token,
+		RefreshToken: refreshToken,
+		User:         &user,
+		Permissions:  permissions,
+	}, nil
 }
 
-func (s *AuthService) getSystemPermissions(role string) []string {
-	switch role {
-	case "super_admin":
-		return []string{"*:*"}
-	case "super_manager":
-		return []string{
-			"tenants:*",
-			"plans:*",
-			"modules:*",
-			"system:read",
-		}
-	default:
-		return []string{}
+func (s *AuthService) RefreshToken(refreshToken string) (*AuthResponse, error) {
+	accessToken, newRefreshToken, err := utils.RefreshJWT(refreshToken)
+	if err != nil {
+		return nil, err
 	}
+
+	// Validate the new token to get user info
+	claims, err := utils.ValidateJWT(accessToken)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get user from database
+	var user models.User
+	userUUID, err := uuid.Parse(claims.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.db.Preload("Role").Preload("Role.Permissions").First(&user, "id = ?", userUUID).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return &AuthResponse{
+		Token:        accessToken,
+		RefreshToken: newRefreshToken,
+		User:         &user,
+		Permissions:  claims.Permissions,
+	}, nil
 }

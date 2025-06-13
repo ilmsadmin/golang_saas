@@ -2,57 +2,43 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { signIn, getSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { useLogin } from '@/hooks/use-auth';
 
 export default function SignInPage() {
   const [userType, setUserType] = useState<'system' | 'tenant' | 'customer'>('customer');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const router = useRouter();
+  const { login, loading, error: loginError } = useLogin();
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
     
     try {
-      const result = await signIn('credentials', {
+      await login({
         email,
         password,
-        userType,
-        redirect: false,
+        tenantSlug: userType === 'tenant' ? (getSubdomainFromHost() || undefined) : undefined,
       });
-
-      if (result?.error) {
-        setError('Email hoặc mật khẩu không đúng');
-      } else {
-        // Get the session to determine redirect path
-        const session = await getSession();
-        if (session?.user?.role) {
-          // Redirect based on user role
-          if (session.user.role === 'super_admin' || session.user.role === 'admin') {
-            router.push('/admin/dashboard');
-          } else if (session.user.role === 'tenant_admin') {
-            router.push('/tenant/dashboard');
-          } else {
-            router.push('/dashboard');
-          }
-        } else {
-          // Default redirect for customers
-          router.push('/dashboard');
-        }
-      }
-    } catch (err) {
-      setError('Đã xảy ra lỗi khi đăng nhập');
+      
+      // Redirect is handled in the login hook
+    } catch (err: any) {
+      setError(err.message || 'Đã xảy ra lỗi khi đăng nhập');
       console.error('Login error:', err);
-    } finally {
-      setLoading(false);
     }
+  };
+
+  // Helper function to get subdomain
+  const getSubdomainFromHost = (): string | null => {
+    if (typeof window === 'undefined') return null;
+    const hostname = window.location.hostname;
+    const parts = hostname.split('.');
+    return parts.length >= 3 ? parts[0] : null;
   };
 
   return (
@@ -77,7 +63,7 @@ export default function SignInPage() {
         <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Error Message */}
-            {error && (
+            {(error || loginError) && (
               <div className="rounded-md bg-red-50 p-4">
                 <div className="flex">
                   <div className="flex-shrink-0">
@@ -86,7 +72,7 @@ export default function SignInPage() {
                     </svg>
                   </div>
                   <div className="ml-3">
-                    <p className="text-sm text-red-800">{error}</p>
+                    <p className="text-sm text-red-800">{error || loginError?.message}</p>
                   </div>
                 </div>
               </div>
@@ -181,6 +167,7 @@ export default function SignInPage() {
             {/* Email */}
             <Input
               label="Email"
+              name="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -191,6 +178,7 @@ export default function SignInPage() {
             {/* Password */}
             <Input
               label="Mật khẩu"
+              name="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

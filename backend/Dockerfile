@@ -1,10 +1,10 @@
 # Development Dockerfile
-FROM golang:1.19-alpine AS base
+FROM golang:1.24-alpine AS base
 
 WORKDIR /app
 
 # Install air for hot reloading
-RUN go install github.com/cosmtrek/air@latest
+RUN go install github.com/air-verse/air@latest
 
 # Copy go mod files
 COPY go.mod go.sum ./

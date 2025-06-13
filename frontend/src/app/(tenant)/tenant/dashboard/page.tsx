@@ -3,31 +3,32 @@
 import React from 'react';
 import { Sidebar } from '@/components/layouts/Sidebar';
 import { useTenantDashboardStats, useTenantUsers, useTenantCustomers } from '@/hooks/use-tenant';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 import { useTenant } from '@/providers/tenant-provider';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 
 export default function TenantDashboard() {
-  const { data: session, status } = useSession();
+  const { isAuthenticated, storedUser, isLoading, logout } = useAuth();
   const router = useRouter();
   const { tenant, isLoading: tenantLoading } = useTenant();
   const { data: stats, isLoading: statsLoading } = useTenantDashboardStats();
 
   // Redirect to login if not authenticated
   React.useEffect(() => {
-    if (status === 'unauthenticated') {
+    if (!isLoading && !isAuthenticated) {
       router.push('/auth/signin');
     }
-  }, [status, router]);
+  }, [isLoading, isAuthenticated, router]);
 
   // Check if user has tenant admin role
   React.useEffect(() => {
-    if (session && !['tenant_admin', 'super_admin'].includes(session.user.role)) {
+    if (storedUser && !['tenant_admin', 'super_admin'].includes(storedUser.role.name)) {
       router.push('/dashboard'); // Redirect to customer dashboard
     }
-  }, [session, router]);
+  }, [storedUser, router]);
 
-  if (status === 'loading' || tenantLoading || statsLoading) {
+  if (isLoading || tenantLoading || statsLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
         <div className="loading-spinner"></div>
@@ -35,7 +36,7 @@ export default function TenantDashboard() {
     );
   }
 
-  if (!session) {
+  if (!isAuthenticated || !storedUser) {
     return null;
   }
 
@@ -89,12 +90,18 @@ export default function TenantDashboard() {
   ];
 
   const userInfo = {
-    name: session.user.name || 'Tenant Admin',
-    email: session.user.email || '',
+    name: storedUser ? `${storedUser.firstName} ${storedUser.lastName}` : 'Tenant Admin',
+    email: storedUser?.email || '',
   };
 
-  const handleLogout = () => {
-    router.push('/api/auth/signout');
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Fallback to manual redirect if logout fails
+      router.push('/auth/signin');
+    }
   };
 
   // Mock stats if no real data
@@ -111,12 +118,13 @@ export default function TenantDashboard() {
   const currentStats = stats || mockStats;
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      <Sidebar
-        title={tenant?.name || 'Tenant Admin'}
-        items={sidebarItems}
-        userInfo={userInfo}
-        onLogout={handleLogout}
+    <ProtectedRoute requiredRole={['tenant_admin', 'super_admin']}>
+      <div className="flex h-screen bg-gray-100">
+        <Sidebar
+          title={tenant?.name || 'Tenant Admin'}
+          items={sidebarItems}
+          userInfo={userInfo}
+          onLogout={handleLogout}
       />
       
       {/* Main Content */}
@@ -288,5 +296,6 @@ export default function TenantDashboard() {
         </div>
       </div>
     </div>
+    </ProtectedRoute>
   );
 }

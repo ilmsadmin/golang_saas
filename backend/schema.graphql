@@ -1,0 +1,299 @@
+# GraphQL Schema for Multi-Tenant SaaS Platform
+
+scalar Time
+scalar JSON
+
+# Authentication Types
+type AuthPayload {
+  token: String!
+  refreshToken: String!
+  user: User!
+  tenant: Tenant
+}
+
+# User Types
+type User {
+  id: ID!
+  email: String!
+  firstName: String!
+  lastName: String!
+  isActive: Boolean!
+  role: Role!
+  tenantId: ID
+  tenant: Tenant
+  permissions: [Permission!]!
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+type Role {
+  id: ID!
+  name: String!
+  description: String
+  permissions: [Permission!]!
+  isSystemRole: Boolean!
+  tenantId: ID
+  tenant: Tenant
+  users: [User!]!
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+type Permission {
+  id: ID!
+  name: String!
+  resource: String!
+  action: String!
+  description: String
+  isSystemPermission: Boolean!
+  roles: [Role!]!
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+# Tenant Types
+type Tenant {
+  id: ID!
+  name: String!
+  slug: String!
+  domain: String
+  subdomain: String!
+  status: TenantStatus!
+  settings: JSON
+  users: [User!]!
+  roles: [Role!]!
+  subscription: TenantSubscription
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+type TenantSubscription {
+  id: ID!
+  tenantId: ID!
+  planId: ID!
+  status: SubscriptionStatus!
+  currentPeriodStart: Time!
+  currentPeriodEnd: Time!
+  tenant: Tenant!
+  plan: Plan!
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+type Plan {
+  id: ID!
+  name: String!
+  description: String
+  price: Float!
+  features: JSON!
+  maxUsers: Int!
+  subscriptions: [TenantSubscription!]!
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+# System Admin Types
+type SystemSettings {
+  id: ID!
+  key: String!
+  value: JSON!
+  description: String
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+# Enums
+enum TenantStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  PAST_DUE
+  UNPAID
+}
+
+enum UserRole {
+  SYSTEM_ADMIN
+  TENANT_ADMIN
+  TENANT_USER
+  CUSTOMER
+}
+
+# Input Types
+input RegisterInput {
+  email: String!
+  password: String!
+  firstName: String!
+  lastName: String!
+  tenantSlug: String
+}
+
+input LoginInput {
+  email: String!
+  password: String!
+  tenantSlug: String
+}
+
+input CreateTenantInput {
+  name: String!
+  slug: String!
+  domain: String
+  subdomain: String!
+  adminEmail: String!
+  adminPassword: String!
+  adminFirstName: String!
+  adminLastName: String!
+  planId: ID!
+}
+
+input UpdateTenantInput {
+  name: String
+  domain: String
+  status: TenantStatus
+  settings: JSON
+}
+
+input CreateUserInput {
+  email: String!
+  firstName: String!
+  lastName: String!
+  password: String!
+  roleId: ID!
+}
+
+input UpdateUserInput {
+  firstName: String
+  lastName: String
+  isActive: Boolean
+  roleId: ID
+}
+
+input CreateRoleInput {
+  name: String!
+  description: String
+  permissionIds: [ID!]!
+}
+
+input UpdateRoleInput {
+  name: String
+  description: String
+  permissionIds: [ID!]
+}
+
+input CreatePlanInput {
+  name: String!
+  description: String
+  price: Float!
+  features: JSON!
+  maxUsers: Int!
+}
+
+input UpdatePlanInput {
+  name: String
+  description: String
+  price: Float
+  features: JSON
+  maxUsers: Int
+}
+
+# Filters and Pagination
+input UserFilter {
+  email: String
+  isActive: Boolean
+  roleId: ID
+  tenantId: ID
+}
+
+input TenantFilter {
+  status: TenantStatus
+  name: String
+}
+
+input PaginationInput {
+  page: Int = 1
+  limit: Int = 10
+}
+
+type PaginatedUsers {
+  users: [User!]!
+  total: Int!
+  page: Int!
+  limit: Int!
+  totalPages: Int!
+}
+
+type PaginatedTenants {
+  tenants: [Tenant!]!
+  total: Int!
+  page: Int!
+  limit: Int!
+  totalPages: Int!
+}
+
+# Root Types
+type Query {
+  # Authentication
+  me: User
+
+  # Users
+  users(filter: UserFilter, pagination: PaginationInput): PaginatedUsers!
+  user(id: ID!): User
+  
+  # Tenants
+  tenants(filter: TenantFilter, pagination: PaginationInput): PaginatedTenants!
+  tenant(id: ID!): Tenant
+  tenantBySlug(slug: String!): Tenant
+  
+  # Roles & Permissions
+  roles: [Role!]!
+  role(id: ID!): Role
+  permissions: [Permission!]!
+  
+  # Plans
+  plans: [Plan!]!
+  plan(id: ID!): Plan
+  
+  # System (Admin only)
+  systemSettings: [SystemSettings!]!
+  systemStats: JSON
+}
+
+type Mutation {
+  # Authentication
+  register(input: RegisterInput!): AuthPayload!
+  login(input: LoginInput!): AuthPayload!
+  refreshToken(token: String!): AuthPayload!
+  logout: Boolean!
+  
+  # Tenant Management
+  createTenant(input: CreateTenantInput!): Tenant!
+  updateTenant(id: ID!, input: UpdateTenantInput!): Tenant!
+  deleteTenant(id: ID!): Boolean!
+  
+  # User Management
+  createUser(input: CreateUserInput!): User!
+  updateUser(id: ID!, input: UpdateUserInput!): User!
+  deleteUser(id: ID!): Boolean!
+  
+  # Role Management
+  createRole(input: CreateRoleInput!): Role!
+  updateRole(id: ID!, input: UpdateRoleInput!): Role!
+  deleteRole(id: ID!): Boolean!
+  
+  # Plan Management (System Admin only)
+  createPlan(input: CreatePlanInput!): Plan!
+  updatePlan(id: ID!, input: UpdatePlanInput!): Plan!
+  deletePlan(id: ID!): Boolean!
+}
+
+type WebSocketSubscription {
+  # Real-time updates
+  userUpdated: User!
+  tenantUpdated: Tenant!
+  systemNotification: JSON!
+}

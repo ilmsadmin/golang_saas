@@ -1,29 +1,42 @@
 import { ApolloClient, InMemoryCache, createHttpLink, from } from '@apollo/client';
 import { setContext } from '@apollo/client/link/context';
 import { onError } from '@apollo/client/link/error';
-import { getSession } from 'next-auth/react';
 
 // Create HTTP Link
 const httpLink = createHttpLink({
-  uri: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1',
+  uri: process.env.NEXT_PUBLIC_GRAPHQL_URL || 'http://localhost:3000/graphql',
 });
+
+// Get token from localStorage (for client-side) or return empty string (for server-side)
+const getAuthToken = () => {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('access_token') || '';
+  }
+  return '';
+};
 
 // Authentication Link
 const authLink = setContext(async (_, { headers }) => {
   // Get authentication token
-  const session = await getSession();
+  const token = getAuthToken();
   
   // Extract subdomain for tenant context
   const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
   const subdomain = extractSubdomain(hostname);
   
+  const requestHeaders = {
+    ...headers,
+    authorization: token ? `Bearer ${token}` : '',
+    'X-Tenant': subdomain || '',
+    'Content-Type': 'application/json',
+  };
+  
+  console.log('[Apollo Client Debug] Request Headers:', requestHeaders);
+  console.log('[Apollo Client Debug] Token:', token);
+  console.log('[Apollo Client Debug] Subdomain:', subdomain);
+  
   return {
-    headers: {
-      ...headers,
-      authorization: session?.accessToken ? `Bearer ${session.accessToken}` : '',
-      'X-Tenant': subdomain || '',
-      'Content-Type': 'application/json',
-    }
+    headers: requestHeaders
   };
 });
 

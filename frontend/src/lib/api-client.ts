@@ -1,5 +1,4 @@
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
-import { getSession } from 'next-auth/react';
 
 class ApiClient {
   private client: AxiosInstance;
@@ -17,9 +16,12 @@ class ApiClient {
     // Request interceptor
     this.client.interceptors.request.use(
       async (config) => {
-        const session = await getSession();
-        if (session?.accessToken) {
-          config.headers.Authorization = `Bearer ${session.accessToken}`;
+        // Get token from localStorage
+        if (typeof window !== 'undefined') {
+          const token = localStorage.getItem('access_token');
+          if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+          }
         }
 
         // Add tenant header if available
