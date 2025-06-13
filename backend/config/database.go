@@ -142,9 +142,11 @@ func GetTenantDB(tenantID uint) *gorm.DB {
 		return db
 	}
 
-	// Create new session with tenant schema
+	// Create new dedicated session for this tenant
 	db = DB.Session(&gorm.Session{})
 	schemaName := fmt.Sprintf("tenant_%d", tenantID)
+	
+	// Set search path for this session only
 	db.Exec(fmt.Sprintf("SET search_path TO %s", schemaName))
 
 	TenantDBs[tenantID] = db

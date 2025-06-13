@@ -68,9 +68,8 @@ func main() {
 		})
 	})
 
-	// Setup routes
-	routes.SetupSystemRoutes(app)
-	routes.SetupTenantRoutes(app)
+	// Setup routes - unified approach
+	routes.SetupRoutes(app)
 
 	// 404 handler
 	app.Use(func(c *fiber.Ctx) error {
