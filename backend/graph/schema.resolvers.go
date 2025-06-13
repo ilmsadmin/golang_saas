@@ -9,16 +9,21 @@ import (
 	"fmt"
 	"golang_saas/graph/model"
 	"golang_saas/models"
+	"golang_saas/services"
+	
+	"github.com/google/uuid"
 )
 
 // Register is the resolver for the register field.
 func (r *mutationResolver) Register(ctx context.Context, input model.RegisterInput) (*model.AuthPayload, error) {
-	panic(fmt.Errorf("not implemented: Register - register"))
+	// For now, just return a simple implementation
+	return nil, fmt.Errorf("register functionality not implemented yet")
 }
 
 // Login is the resolver for the login field.
 func (r *mutationResolver) Login(ctx context.Context, input model.LoginInput) (*model.AuthPayload, error) {
-	panic(fmt.Errorf("not implemented: Login - login"))
+	// For now, just return a simple implementation
+	return nil, fmt.Errorf("login functionality not implemented yet")
 }
 
 // RefreshToken is the resolver for the refreshToken field.
@@ -108,12 +113,27 @@ func (r *mutationResolver) DeleteCustomer(ctx context.Context, id string) (bool,
 
 // InitializeSystemRoles is the resolver for the initializeSystemRoles field.
 func (r *mutationResolver) InitializeSystemRoles(ctx context.Context) (bool, error) {
-	panic(fmt.Errorf("not implemented: InitializeSystemRoles - initializeSystemRoles"))
+	rbacService := services.NewRBACService(r.DB)
+	err := rbacService.InitializeSystemRoles()
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // InitializeTenantRoles is the resolver for the initializeTenantRoles field.
 func (r *mutationResolver) InitializeTenantRoles(ctx context.Context, tenantID string) (bool, error) {
-	panic(fmt.Errorf("not implemented: InitializeTenantRoles - initializeTenantRoles"))
+	tenantUUID, err := uuid.Parse(tenantID)
+	if err != nil {
+		return false, fmt.Errorf("invalid tenant ID: %v", err)
+	}
+	
+	rbacService := services.NewRBACService(r.DB)
+	err = rbacService.InitializeTenantRoles(tenantUUID)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // ID is the resolver for the id field.
@@ -148,12 +168,18 @@ func (r *queryResolver) Me(ctx context.Context) (*models.User, error) {
 
 // MyPermissions is the resolver for the myPermissions field.
 func (r *queryResolver) MyPermissions(ctx context.Context) ([]string, error) {
-	panic(fmt.Errorf("not implemented: MyPermissions - myPermissions"))
+	// For now, return empty array
+	return []string{}, nil
 }
 
 // CheckPermission is the resolver for the checkPermission field.
 func (r *queryResolver) CheckPermission(ctx context.Context, input model.PermissionCheckInput) (*model.PermissionCheck, error) {
-	panic(fmt.Errorf("not implemented: CheckPermission - checkPermission"))
+	// For now, return a basic response
+	return &model.PermissionCheck{
+		HasPermission: false,
+		Permission:    input.Permission,
+		Reason:        strPtr("Not implemented yet"),
+	}, nil
 }
 
 // Users is the resolver for the users field.
@@ -339,3 +365,8 @@ type systemSettingsResolver struct{ *Resolver }
 type tenantResolver struct{ *Resolver }
 type tenantSubscriptionResolver struct{ *Resolver }
 type userResolver struct{ *Resolver }
+
+// Helper function to create string pointers
+func strPtr(s string) *string {
+	return &s
+}
