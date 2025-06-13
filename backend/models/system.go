@@ -10,7 +10,7 @@ import (
 
 // BaseModel contains common fields for all models
 type BaseModel struct {
-	ID        uuid.UUID      `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	ID        uuid.UUID      `json:"id" gorm:"type:char(36);primary_key"`
 	CreatedAt time.Time      `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt time.Time      `json:"updated_at" gorm:"autoUpdateTime"`
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
@@ -32,8 +32,8 @@ type User struct {
 	LastName  string     `json:"last_name" gorm:"not null"`
 	Password  string     `json:"-" gorm:"not null"`
 	IsActive  bool       `json:"is_active" gorm:"default:true"`
-	TenantID  *uuid.UUID `json:"tenant_id" gorm:"type:uuid;index"`
-	RoleID    uuid.UUID  `json:"role_id" gorm:"type:uuid;not null"`
+	TenantID  *uuid.UUID `json:"tenant_id" gorm:"type:char(36);index"`
+	RoleID    uuid.UUID  `json:"role_id" gorm:"type:char(36);not null"`
 
 	// Relations
 	Tenant      *Tenant      `json:"tenant,omitempty" gorm:"foreignKey:TenantID"`
@@ -47,7 +47,7 @@ type Role struct {
 	Name         string     `json:"name" gorm:"not null"`
 	Description  *string    `json:"description"`
 	IsSystemRole bool       `json:"is_system_role" gorm:"default:false"`
-	TenantID     *uuid.UUID `json:"tenant_id" gorm:"type:uuid;index"`
+	TenantID     *uuid.UUID `json:"tenant_id" gorm:"type:char(36);index"`
 
 	// Relations
 	Tenant      *Tenant      `json:"tenant,omitempty" gorm:"foreignKey:TenantID"`
@@ -108,8 +108,8 @@ const (
 // Subscription represents a tenant's subscription
 type Subscription struct {
 	BaseModel
-	TenantID            uuid.UUID          `json:"tenant_id" gorm:"type:uuid;not null;index"`
-	PlanID              uuid.UUID          `json:"plan_id" gorm:"type:uuid;not null"`
+	TenantID            uuid.UUID          `json:"tenant_id" gorm:"type:char(36);not null;index"`
+	PlanID              uuid.UUID          `json:"plan_id" gorm:"type:char(36);not null"`
 	Status              SubscriptionStatus `json:"status" gorm:"default:ACTIVE"`
 	CurrentPeriodStart  time.Time          `json:"current_period_start" gorm:"not null"`
 	CurrentPeriodEnd    time.Time          `json:"current_period_end" gorm:"not null"`

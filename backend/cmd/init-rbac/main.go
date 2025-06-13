@@ -6,8 +6,6 @@ import (
 	"golang_saas/models"
 	"golang_saas/services"
 	"golang_saas/utils"
-
-	"github.com/google/uuid"
 )
 
 func main() {
