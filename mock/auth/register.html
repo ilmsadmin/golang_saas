@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đăng ký - SaaS Platform</title>
+    <link rel="stylesheet" href="../assets/styles.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+        <div class="max-w-md w-full space-y-8">
+            <!-- Header -->
+            <div class="text-center">
+                <img class="mx-auto h-12 w-auto" src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iOCIgZmlsbD0iIzM3OTlmNyIvPgo8cGF0aCBkPSJNMTIgMTZIMzZWMThIMTJWMTZaIiBmaWxsPSJ3aGl0ZSIvPgo8cGF0aCBkPSJNMTIgMjJIMzZWMjRIMTJWMjJaIiBmaWxsPSJ3aGl0ZSIvPgo8cGF0aCBkPSJNMTIgMjhIMzZWMzBIMTJWMjhaIiBmaWxsPSJ3aGl0ZSIvPgo8L3N2Zz4K" alt="Logo">
+                <h2 class="mt-6 text-3xl font-extrabold text-gray-900">
+                    Tạo tài khoản mới
+                </h2>
+                <p class="mt-2 text-sm text-gray-600">
+                    Đăng ký để trở thành tenant của nền tảng
+                </p>
+            </div>
+
+            <!-- Registration Form -->
+            <div class="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+                <form class="space-y-6" onsubmit="handleRegister(event)">
+                    <!-- Company Information -->
+                    <div class="space-y-4">
+                        <h3 class="text-lg font-medium text-gray-900">Thông tin công ty</h3>
+                        
+                        <div>
+                            <label for="company-name" class="form-label">
+                                Tên công ty *
+                            </label>
+                            <input id="company-name" name="company-name" type="text" required class="form-input" placeholder="VD: Công ty ABC">
+                        </div>
+                        
+                        <div>
+                            <label for="subdomain" class="form-label">
+                                Subdomain *
+                            </label>
+                            <div class="mt-1 flex rounded-md shadow-sm">
+                                <input id="subdomain" name="subdomain" type="text" required class="form-input rounded-r-none" placeholder="abc">
+                                <span class="inline-flex items-center px-3 rounded-r-md border border-l-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">
+                                    .zplus.vn
+                                </span>
+                            </div>
+                            <p class="mt-1 text-sm text-gray-500">Địa chỉ trang web của bạn sẽ là: abc.zplus.vn</p>
+                        </div>
+                    </div>
+
+                    <!-- Personal Information -->
+                    <div class="space-y-4">
+                        <h3 class="text-lg font-medium text-gray-900">Thông tin cá nhân</h3>
+                        
+                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div>
+                                <label for="first-name" class="form-label">
+                                    Họ *
+                                </label>
+                                <input id="first-name" name="first-name" type="text" required class="form-input" placeholder="Nguyễn">
+                            </div>
+                            
+                            <div>
+                                <label for="last-name" class="form-label">
+                                    Tên *
+                                </label>
+                                <input id="last-name" name="last-name" type="text" required class="form-input" placeholder="Văn A">
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label for="email" class="form-label">
+                                Email *
+                            </label>
+                            <input id="email" name="email" type="email" required class="form-input" placeholder="admin@abc.com">
+                        </div>
+                        
+                        <div>
+                            <label for="phone" class="form-label">
+                                Số điện thoại
+                            </label>
+                            <input id="phone" name="phone" type="tel" class="form-input" placeholder="0123456789">
+                        </div>
+                    </div>
+
+                    <!-- Password -->
+                    <div class="space-y-4">
+                        <div>
+                            <label for="password" class="form-label">
+                                Mật khẩu *
+                            </label>
+                            <input id="password" name="password" type="password" required class="form-input" placeholder="••••••••">
+                            <p class="mt-1 text-sm text-gray-500">Ít nhất 8 ký tự, bao gồm chữ hoa, chữ thường và số</p>
+                        </div>
+                        
+                        <div>
+                            <label for="password-confirm" class="form-label">
+                                Xác nhận mật khẩu *
+                            </label>
+                            <input id="password-confirm" name="password-confirm" type="password" required class="form-input" placeholder="••••••••">
+                        </div>
+                    </div>
+
+                    <!-- Plan Selection -->
+                    <div class="space-y-4">
+                        <h3 class="text-lg font-medium text-gray-900">Chọn gói dịch vụ</h3>
+                        
+                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <!-- Basic Plan -->
+                            <div class="relative">
+                                <input id="plan-basic" name="plan" type="radio" value="basic" class="sr-only peer" checked>
+                                <label for="plan-basic" class="flex flex-col p-4 text-center bg-white border border-gray-200 rounded-lg cursor-pointer peer-checked:border-blue-600 peer-checked:bg-blue-50 hover:bg-gray-50">
+                                    <div class="font-medium text-gray-900">Basic</div>
+                                    <div class="text-2xl font-bold text-blue-600 mt-2">FREE</div>
+                                    <div class="text-sm text-gray-500 mt-1">30 ngày dùng thử</div>
+                                    <ul class="text-sm text-gray-600 mt-3 space-y-1">
+                                        <li>✓ 5 người dùng</li>
+                                        <li>✓ 2 modules cơ bản</li>
+                                        <li>✓ Hỗ trợ email</li>
+                                    </ul>
+                                </label>
+                            </div>
+
+                            <!-- Premium Plan -->
+                            <div class="relative">
+                                <input id="plan-premium" name="plan" type="radio" value="premium" class="sr-only peer">
+                                <label for="plan-premium" class="flex flex-col p-4 text-center bg-white border border-gray-200 rounded-lg cursor-pointer peer-checked:border-blue-600 peer-checked:bg-blue-50 hover:bg-gray-50">
+                                    <div class="font-medium text-gray-900">Premium</div>
+                                    <div class="text-2xl font-bold text-blue-600 mt-2">500K</div>
+                                    <div class="text-sm text-gray-500 mt-1">VNĐ/tháng</div>
+                                    <ul class="text-sm text-gray-600 mt-3 space-y-1">
+                                        <li>✓ 50 người dùng</li>
+                                        <li>✓ Tất cả modules</li>
+                                        <li>✓ Hỗ trợ 24/7</li>
+                                    </ul>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Terms -->
+                    <div class="flex items-center">
+                        <input id="accept-terms" name="accept-terms" type="checkbox" required class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                        <label for="accept-terms" class="ml-2 block text-sm text-gray-900">
+                            Tôi đồng ý với 
+                            <a href="#" class="text-blue-600 hover:text-blue-500">Điều khoản sử dụng</a>
+                            và
+                            <a href="#" class="text-blue-600 hover:text-blue-500">Chính sách bảo mật</a>
+                        </label>
+                    </div>
+
+                    <div>
+                        <button type="submit" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                            Tạo tài khoản
+                        </button>
+                    </div>
+
+                    <div class="text-center">
+                        <p class="text-sm text-gray-600">
+                            Đã có tài khoản?
+                            <a href="signin.html" class="font-medium text-blue-600 hover:text-blue-500">
+                                Đăng nhập
+                            </a>
+                        </p>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="../assets/scripts.js"></script>
+    <script>
+        function handleRegister(event) {
+            event.preventDefault();
+            
+            const formData = new FormData(event.target);
+            const password = formData.get('password');
+            const passwordConfirm = formData.get('password-confirm');
+            
+            // Validate password confirmation
+            if (password !== passwordConfirm) {
+                utils.showToast('Mật khẩu xác nhận không khớp', 'error');
+                return;
+            }
+            
+            // Validate subdomain
+            const subdomain = formData.get('subdomain');
+            if (!/^[a-z0-9-]+$/.test(subdomain)) {
+                utils.showToast('Subdomain chỉ được chứa chữ thường, số và dấu gạch ngang', 'error');
+                return;
+            }
+            
+            utils.showToast('Đang tạo tài khoản...', 'info');
+            
+            setTimeout(() => {
+                utils.showToast('Tài khoản đã được tạo thành công! Vui lòng kiểm tra email để kích hoạt.', 'success');
+                setTimeout(() => {
+                    window.location.href = 'signin.html';
+                }, 2000);
+            }, 2000);
+        }
+    </script>
+</body>
+</html>
