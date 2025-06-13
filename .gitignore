@@ -1,0 +1,65 @@
+# Go modules
+go.mod
+go.sum
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Build outputs
+/dist
+/build
+/tmp
+
+# Dependencies
+/vendor
+node_modules/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Logs
+*.log
+logs/
+
+# Database
+*.sqlite
+*.db
+
+# Coverage reports
+coverage.out
+coverage.html
+
+# Temporary files
+/tmp/
+*.tmp
+
+# SSL certificates (except documentation examples)
+*.pem
+*.key
+*.crt
+
+# Backup files
+*.backup
+*.bak
+
+# Test files
+test-results/
+playwright-report/
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib

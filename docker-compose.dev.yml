@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: golang_saas_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - app-network
+
+  redis:
+    image: redis:6-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+
+  backend:
+    build: ./backend
+    ports:
+      - "3000:3000"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - DB_NAME=golang_saas_dev
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - APP_ENV=development
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./backend:/app
+      - /app/tmp  # Exclude tmp directory
+    networks:
+      - app-network
+    command: air  # Hot reload for development
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3001:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:3000/api/v1
+      - NEXT_PUBLIC_SYSTEM_DOMAIN=localhost:3001
+      - NODE_ENV=development
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules  # Exclude node_modules
+      - /app/.next  # Exclude .next
+    networks:
+      - app-network
+    command: npm run dev
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/dev.conf:/etc/nginx/nginx.conf
+      - ./docker/nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
