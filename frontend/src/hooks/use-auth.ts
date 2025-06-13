@@ -339,6 +339,39 @@ export function useAuth() {
     setStoredUser(null);
     return result;
   };
+
+  // Permission checking function
+  const hasPermission = (resource: string, action: string): boolean => {
+    if (!storedUser?.permissions) return false;
+    
+    return storedUser.permissions.some((perm) => {
+      return (perm.resource === '*' || perm.resource === resource) &&
+             (perm.action === '*' || perm.action === action);
+    });
+  };
+
+  // Role checking function
+  const hasRole = (roleName: string | string[]): boolean => {
+    if (!storedUser?.role) return false;
+    
+    const roles = Array.isArray(roleName) ? roleName : [roleName];
+    return roles.includes(storedUser.role.name);
+  };
+
+  // Check if user is system admin
+  const isSystemAdmin = (): boolean => {
+    return hasRole(['system_admin', 'super_admin']) || hasPermission('*', '*');
+  };
+
+  // Check if user is tenant admin
+  const isTenantAdmin = (): boolean => {
+    return hasRole(['tenant_admin', 'admin']) && !!storedUser?.tenantId;
+  };
+
+  // Check if user is customer
+  const isCustomer = (): boolean => {
+    return hasRole('customer');
+  };
   
   return {
     // Auth state
@@ -349,6 +382,13 @@ export function useAuth() {
     // Login/logout functions
     login: enhancedLogin,
     logout: enhancedLogout,
+    
+    // Permission checking
+    hasPermission,
+    hasRole,
+    isSystemAdmin,
+    isTenantAdmin,
+    isCustomer,
     
     // Original hooks
     loginLoading: loginHook.loading,
