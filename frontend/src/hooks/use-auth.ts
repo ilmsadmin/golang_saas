@@ -2,6 +2,7 @@ import React from 'react';
 import { useMutation, useQuery } from '@apollo/client';
 import { useRouter } from 'next/navigation';
 import { LOGIN_MUTATION, LOGOUT_MUTATION, REGISTER_MUTATION, REFRESH_TOKEN_MUTATION, ME_QUERY } from '@/lib/graphql/auth';
+import { getCurrentTenantSlug, getRedirectUrlByRole } from '@/utils/tenant-routing';
 
 // Debug logging helper
 const debugLog = (context: string, data: any) => {
@@ -90,9 +91,11 @@ export function useLogin() {
           });
         }
 
-        // Redirect based on user role
+        // Redirect based on user role and tenant context
         debugLog('Redirecting user with role', user.role.name);
-        redirectByRole(user.role.name, router);
+        const tenantSlug = getCurrentTenantSlug();
+        const redirectUrl = getRedirectUrlByRole(user.role.name, tenantSlug || undefined);
+        router.push(redirectUrl);
         return { success: true, user };
       } else {
         debugLog('Login Failed - No data returned', data);
@@ -178,8 +181,10 @@ export function useRegister() {
           localStorage.setItem('user', JSON.stringify(user));
         }
 
-        // Redirect based on user role
-        redirectByRole(user.role.name, router);
+        // Redirect based on user role and tenant context
+        const tenantSlug = getCurrentTenantSlug();
+        const redirectUrl = getRedirectUrlByRole(user.role.name, tenantSlug || undefined);
+        router.push(redirectUrl);
         return { success: true, user };
       }
     } catch (err) {
@@ -255,34 +260,6 @@ export function useRefreshToken() {
     refreshToken,
     loading,
   };
-}
-
-// Helper functions
-function getUserType(roleName: string): string {
-  const roleMap: Record<string, string> = {
-    'system_admin': 'system',
-    'super_admin': 'system',
-    'admin': 'system',
-    'tenant_admin': 'tenant',
-    'tenant_user': 'customer',
-    'customer': 'customer',
-  };
-  
-  return roleMap[roleName] || 'customer';
-}
-
-function redirectByRole(roleName: string, router: any) {
-  const redirectMap: Record<string, string> = {
-    'system_admin': '/system/dashboard',
-    'super_admin': '/system/dashboard',
-    'admin': '/system/dashboard',
-    'tenant_admin': '/tenant/dashboard',
-    'tenant_user': '/dashboard',
-    'customer': '/dashboard',
-  };
-  
-  const redirectPath = redirectMap[roleName] || '/dashboard';
-  router.push(redirectPath);
 }
 
 // Enhanced authentication hook that provides complete auth state

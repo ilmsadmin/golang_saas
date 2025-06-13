@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"golang_saas/models"
+	"golang_saas/services"
 	"golang_saas/utils"
 
 	"github.com/gin-gonic/gin"
@@ -91,7 +92,160 @@ func RequireAuth(ctx context.Context) (*models.User, error) {
 }
 
 // RequirePermission checks if user has specific permission
-func RequirePermission(ctx context.Context, permission string) error {
+func RequirePermission(ctx context.Context, db *gorm.DB, permission string) error {
+	user, err := RequireAuth(ctx)
+	if err != nil {
+		return err
+	}
+
+	rbacService := services.NewRBACService(db)
+	hasPermission, err := rbacService.CheckUserPermission(user.ID, permission, user.TenantID)
+	if err != nil {
+		return &AuthError{Code: "PERMISSION_CHECK_FAILED", Message: "Failed to check permissions"}
+	}
+
+	if !hasPermission {
+		return ErrForbidden
+	}
+
+	return nil
+}
+
+// RequireSystemPermission checks if user has specific system permission
+func RequireSystemPermission(ctx context.Context, db *gorm.DB, permission string) error {
+	user, err := RequireAuth(ctx)
+	if err != nil {
+		return err
+	}
+
+	// System users only
+	if user.TenantID != nil {
+		return &AuthError{Code: "SYSTEM_ACCESS_REQUIRED", Message: "System access required"}
+	}
+
+	rbacService := services.NewRBACService(db)
+	hasPermission, err := rbacService.CheckUserPermission(user.ID, permission, nil)
+	if err != nil {
+		return &AuthError{Code: "PERMISSION_CHECK_FAILED", Message: "Failed to check permissions"}
+	}
+
+	if !hasPermission {
+		return ErrForbidden
+	}
+
+	return nil
+}
+
+// RequireTenantPermission checks if user has specific tenant permission
+func RequireTenantPermission(ctx context.Context, db *gorm.DB, permission string, tenantID uuid.UUID) error {
+	user, err := RequireAuth(ctx)
+	if err != nil {
+		return err
+	}
+
+	// System users can access any tenant
+	if user.TenantID == nil {
+		// Check if user has system permission to manage tenants
+		rbacService := services.NewRBACService(db)
+		hasSystemAccess, err := rbacService.CheckUserPermission(user.ID, "tenant.manage", nil)
+		if err != nil {
+			return &AuthError{Code: "PERMISSION_CHECK_FAILED", Message: "Failed to check permissions"}
+		}
+		if hasSystemAccess {
+			return nil
+		}
+		return ErrForbidden
+	}
+
+	// Check tenant access
+	if *user.TenantID != tenantID {
+		return &AuthError{Code: "TENANT_ACCESS_DENIED", Message: "Access to tenant denied"}
+	}
+
+	rbacService := services.NewRBACService(db)
+	hasPermission, err := rbacService.CheckUserPermission(user.ID, permission, &tenantID)
+	if err != nil {
+		return &AuthError{Code: "PERMISSION_CHECK_FAILED", Message: "Failed to check permissions"}
+	}
+
+	if !hasPermission {
+		return ErrForbidden
+	}
+
+	return nil
+}
+
+// RequireRole checks if user has specific role
+func RequireRole(ctx context.Context, role models.SystemRole) error {
+	user, err := RequireAuth(ctx)
+	if err != nil {
+		return err
+	}
+
+	if user.Role.Name != string(role) {
+		return &AuthError{Code: "ROLE_REQUIRED", Message: "Required role not found"}
+	}
+
+	return nil
+}
+
+// RequireSystemRole checks if user has any system role
+func RequireSystemRole(ctx context.Context) error {
+	user, err := RequireAuth(ctx)
+	if err != nil {
+		return err
+	}
+
+	// System users have no tenant ID
+	if user.TenantID != nil {
+		return &AuthError{Code: "SYSTEM_ROLE_REQUIRED", Message: "System role required"}
+	}
+
+	if !user.Role.IsSystemRole {
+		return &AuthError{Code: "SYSTEM_ROLE_REQUIRED", Message: "System role required"}
+	}
+
+	return nil
+}
+
+// RequireTenantRole checks if user has tenant role and belongs to specific tenant
+func RequireTenantRole(ctx context.Context, tenantID uuid.UUID) error {
+	user, err := RequireAuth(ctx)
+	if err != nil {
+		return err
+	}
+
+	// System users can access any tenant
+	if user.TenantID == nil && user.Role.IsSystemRole {
+		return nil
+	}
+
+	// Check tenant access
+	if user.TenantID == nil || *user.TenantID != tenantID {
+		return &AuthError{Code: "TENANT_ACCESS_DENIED", Message: "Access to tenant denied"}
+	}
+
+	return nil
+}
+
+// GetUserPermissions returns all permissions for the current user
+func GetUserPermissions(ctx context.Context, db *gorm.DB) ([]string, error) {
+	user, err := RequireAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	rbacService := services.NewRBACService(db)
+	permissions, err := rbacService.GetUserPermissions(user.ID)
+	if err != nil {
+		return nil, &AuthError{Code: "PERMISSION_FETCH_FAILED", Message: "Failed to fetch permissions"}
+	}
+
+	return permissions, nil
+}
+
+// RequirePermission checks if user has specific permission (legacy function, updated)
+func RequirePermissionLegacy(ctx context.Context, permission string) error {
 	claims, ok := GetClaimsFromContext(ctx)
 	if !ok || claims == nil {
 		return ErrUnauthorized

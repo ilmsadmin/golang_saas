@@ -83,7 +83,7 @@ export default function Home() {
             <div className="bg-gray-50 px-6 py-3">
               <div className="text-sm space-y-2">
                 <div>
-                  <Link href="/admin/dashboard" className="text-blue-600 hover:text-blue-900 font-medium">
+                  <Link href="/system" className="text-blue-600 hover:text-blue-900 font-medium">
                     → Dashboard hệ thống
                   </Link>
                 </div>

@@ -44,10 +44,13 @@ type AuthResponse struct {
 func (s *AuthService) Login(req LoginRequest, tenantID *uuid.UUID) (*AuthResponse, error) {
 	var user models.User
 
-	query := s.db.Preload("Role").Preload("Role.Permissions").Where("email = ? AND is_active = ?", req.Email, true)
+	query := s.db.Preload("Role").Preload("Role.Permissions").Preload("Permissions").Where("email = ? AND is_active = ?", req.Email, true)
 
 	if tenantID != nil {
 		query = query.Where("tenant_id = ?", *tenantID)
+	} else {
+		// For system login, look for system users (no tenant)
+		query = query.Where("tenant_id IS NULL")
 	}
 
 	err := query.First(&user).Error
@@ -63,10 +66,11 @@ func (s *AuthService) Login(req LoginRequest, tenantID *uuid.UUID) (*AuthRespons
 		return nil, errors.New("invalid credentials")
 	}
 
-	// Get permissions
-	permissions := make([]string, 0)
-	for _, perm := range user.Role.Permissions {
-		permissions = append(permissions, perm.Name)
+	// Get all permissions (role + direct permissions)
+	rbacService := NewRBACService(s.db)
+	permissions, err := rbacService.GetUserPermissions(user.ID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Generate JWT tokens
@@ -113,9 +117,19 @@ func (s *AuthService) Register(req RegisterRequest) (*AuthResponse, error) {
 		return nil, err
 	}
 
-	// Get default role
+	// Get default role based on tenant
 	var defaultRole models.Role
-	err = s.db.Where("name = ?", "tenant_user").First(&defaultRole).Error
+	var roleName string
+	if req.TenantID != nil {
+		// Tenant user gets TENANT_USER role
+		roleName = string(models.TenantRoleUser)
+		err = s.db.Where("name = ? AND tenant_id = ?", roleName, *req.TenantID).First(&defaultRole).Error
+	} else {
+		// System user gets SYSTEM_SUPPORT role by default (lowest privilege)
+		roleName = string(models.SystemRoleSupport)
+		err = s.db.Where("name = ? AND tenant_id IS NULL", roleName).First(&defaultRole).Error
+	}
+	
 	if err != nil {
 		return nil, errors.New("default role not found")
 	}
@@ -137,15 +151,16 @@ func (s *AuthService) Register(req RegisterRequest) (*AuthResponse, error) {
 	}
 
 	// Load relationships
-	err = s.db.Preload("Role").Preload("Role.Permissions").First(&user, user.ID).Error
+	err = s.db.Preload("Role").Preload("Role.Permissions").Preload("Permissions").First(&user, user.ID).Error
 	if err != nil {
 		return nil, err
 	}
 
-	// Get permissions
-	permissions := make([]string, 0)
-	for _, perm := range user.Role.Permissions {
-		permissions = append(permissions, perm.Name)
+	// Get all permissions
+	rbacService := NewRBACService(s.db)
+	permissions, err := rbacService.GetUserPermissions(user.ID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Generate JWT tokens

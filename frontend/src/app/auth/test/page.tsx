@@ -37,16 +37,16 @@ export default function AuthTestPage() {
                 Register
               </Link>
               <Link 
-                href="/system/dashboard" 
+                href="/system" 
                 className="block w-full text-center bg-red-600 text-white py-2 px-4 rounded hover:bg-red-700 transition-colors"
               >
                 System Dashboard
               </Link>
               <Link 
-                href="/tenant/dashboard" 
+                href="/demo-tenant" 
                 className="block w-full text-center bg-purple-600 text-white py-2 px-4 rounded hover:bg-purple-700 transition-colors"
               >
-                Tenant Dashboard
+                Tenant Dashboard (Demo)
               </Link>
               <Link 
                 href="/dashboard" 

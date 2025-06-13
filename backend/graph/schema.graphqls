@@ -9,6 +9,7 @@ type AuthPayload {
   refreshToken: String!
   user: User!
   tenant: Tenant
+  permissions: [String!]!
 }
 
 # User Types
@@ -22,6 +23,8 @@ type User {
   tenantId: ID
   tenant: Tenant
   permissions: [Permission!]!
+  directPermissions: [Permission!]!
+  allPermissions: [String!]!
   createdAt: Time!
   updatedAt: Time!
 }
@@ -35,6 +38,7 @@ type Role {
   tenantId: ID
   tenant: Tenant
   users: [User!]!
+  usersCount: Int!
   createdAt: Time!
   updatedAt: Time!
 }
@@ -46,9 +50,40 @@ type Permission {
   action: String!
   description: String
   isSystemPermission: Boolean!
+  scope: PermissionScope!
   roles: [Role!]!
+  users: [User!]!
   createdAt: Time!
   updatedAt: Time!
+}
+
+# RBAC Types
+type CustomerProfile {
+  id: ID!
+  tenantId: ID!
+  email: String!
+  firstName: String!
+  lastName: String!
+  phone: String
+  address: JSON
+  preferences: JSON
+  isActive: Boolean!
+  tags: JSON
+  metadata: JSON
+  tenant: Tenant!
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+type RolePermissionMatrix {
+  role: String!
+  permissions: [String!]!
+}
+
+type PermissionCheck {
+  hasPermission: Boolean!
+  permission: String!
+  reason: String
 }
 
 # Tenant Types
@@ -117,6 +152,56 @@ enum SubscriptionStatus {
   UNPAID
 }
 
+enum PermissionScope {
+  SYSTEM
+  TENANT
+  OWN
+}
+
+enum SystemRole {
+  SUPER_ADMIN
+  SYSTEM_ADMIN
+  SYSTEM_MANAGER
+  SYSTEM_SUPPORT
+  TENANT_ADMIN
+  TENANT_MANAGER
+  TENANT_USER
+  CUSTOMER
+}
+
+enum ResourceType {
+  SYSTEM
+  TENANT
+  PLAN
+  MODULE
+  USER
+  ROLE
+  PERMISSION
+  SUBSCRIPTION
+  SYSTEM_SETTING
+  AUDIT_LOG
+  TENANT_USER
+  TENANT_SETTING
+  TENANT_MODULE
+  DOMAIN_MAPPING
+  TENANT_DATA
+  CUSTOMER
+  REPORT
+  DASHBOARD
+}
+
+enum ActionType {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  LIST
+  MANAGE
+  VIEW
+  EXPORT
+  IMPORT
+}
+
 # Input Types
 input RegisterInput {
   email: String!
@@ -170,12 +255,51 @@ input CreateRoleInput {
   name: String!
   description: String
   permissionIds: [ID!]!
+  tenantId: ID
 }
 
 input UpdateRoleInput {
   name: String
   description: String
   permissionIds: [ID!]
+}
+
+input AssignRoleInput {
+  userId: ID!
+  roleId: ID!
+}
+
+input AssignPermissionInput {
+  userId: ID!
+  permissionIds: [ID!]!
+}
+
+input CreateCustomerInput {
+  tenantId: ID!
+  email: String!
+  firstName: String!
+  lastName: String!
+  phone: String
+  address: JSON
+  preferences: JSON
+  tags: JSON
+  metadata: JSON
+}
+
+input UpdateCustomerInput {
+  firstName: String
+  lastName: String
+  phone: String
+  address: JSON
+  preferences: JSON
+  isActive: Boolean
+  tags: JSON
+  metadata: JSON
+}
+
+input PermissionCheckInput {
+  permission: String!
+  tenantId: ID
 }
 
 # Filters and Pagination
@@ -212,10 +336,36 @@ type PaginatedTenants {
   totalPages: Int!
 }
 
+type PaginatedCustomers {
+  customers: [CustomerProfile!]!
+  total: Int!
+  page: Int!
+  limit: Int!
+  totalPages: Int!
+}
+
+type PaginatedRoles {
+  roles: [Role!]!
+  total: Int!
+  page: Int!
+  limit: Int!
+  totalPages: Int!
+}
+
+type PaginatedPermissions {
+  permissions: [Permission!]!
+  total: Int!
+  page: Int!
+  limit: Int!
+  totalPages: Int!
+}
+
 # Root Types
 type Query {
   # Authentication
   me: User
+  myPermissions: [String!]!
+  checkPermission(input: PermissionCheckInput!): PermissionCheck!
 
   # Users
   users(filter: UserFilter, pagination: PaginationInput): PaginatedUsers!
@@ -227,9 +377,15 @@ type Query {
   tenantBySlug(slug: String!): Tenant
   
   # Roles & Permissions
-  roles: [Role!]!
+  roles(tenantId: ID, pagination: PaginationInput): PaginatedRoles!
   role(id: ID!): Role
-  permissions: [Permission!]!
+  permissions(isSystem: Boolean, pagination: PaginationInput): PaginatedPermissions!
+  permission(id: ID!): Permission
+  rolePermissionMatrix: [RolePermissionMatrix!]!
+  
+  # Customers (Tenant specific)
+  customers(filter: UserFilter, pagination: PaginationInput): PaginatedCustomers!
+  customer(id: ID!): CustomerProfile
   
   # Plans
   plans: [Plan!]!
@@ -246,7 +402,7 @@ type Mutation {
   refreshToken(token: String!): AuthPayload!
   logout: Boolean!
   
-  # Tenant Management
+  # Tenant Management (System Admin)
   createTenant(input: CreateTenantInput!): Tenant!
   updateTenant(id: ID!, input: UpdateTenantInput!): Tenant!
   deleteTenant(id: ID!): Boolean!
@@ -260,4 +416,18 @@ type Mutation {
   createRole(input: CreateRoleInput!): Role!
   updateRole(id: ID!, input: UpdateRoleInput!): Role!
   deleteRole(id: ID!): Boolean!
+  assignRole(input: AssignRoleInput!): User!
+  
+  # Permission Management
+  assignPermissions(input: AssignPermissionInput!): User!
+  revokePermissions(input: AssignPermissionInput!): User!
+  
+  # Customer Management (Tenant specific)
+  createCustomer(input: CreateCustomerInput!): CustomerProfile!
+  updateCustomer(id: ID!, input: UpdateCustomerInput!): CustomerProfile!
+  deleteCustomer(id: ID!): Boolean!
+  
+  # System Management
+  initializeSystemRoles: Boolean!
+  initializeTenantRoles(tenantId: ID!): Boolean!
 }

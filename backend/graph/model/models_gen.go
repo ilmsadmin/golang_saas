@@ -3,20 +3,49 @@
 package model
 
 import (
+	"bytes"
+	"fmt"
 	"golang_saas/models"
+	"io"
+	"strconv"
+	"time"
 )
+
+type AssignPermissionInput struct {
+	UserID        string   `json:"userId"`
+	PermissionIds []string `json:"permissionIds"`
+}
+
+type AssignRoleInput struct {
+	UserID string `json:"userId"`
+	RoleID string `json:"roleId"`
+}
 
 type AuthPayload struct {
 	Token        string         `json:"token"`
 	RefreshToken string         `json:"refreshToken"`
 	User         *models.User   `json:"user"`
 	Tenant       *models.Tenant `json:"tenant,omitempty"`
+	Permissions  []string       `json:"permissions"`
+}
+
+type CreateCustomerInput struct {
+	TenantID    string         `json:"tenantId"`
+	Email       string         `json:"email"`
+	FirstName   string         `json:"firstName"`
+	LastName    string         `json:"lastName"`
+	Phone       *string        `json:"phone,omitempty"`
+	Address     map[string]any `json:"address,omitempty"`
+	Preferences map[string]any `json:"preferences,omitempty"`
+	Tags        map[string]any `json:"tags,omitempty"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
 }
 
 type CreateRoleInput struct {
 	Name          string   `json:"name"`
 	Description   *string  `json:"description,omitempty"`
 	PermissionIds []string `json:"permissionIds"`
+	TenantID      *string  `json:"tenantId,omitempty"`
 }
 
 type CreateTenantInput struct {
@@ -39,6 +68,23 @@ type CreateUserInput struct {
 	RoleID    string `json:"roleId"`
 }
 
+type CustomerProfile struct {
+	ID          string         `json:"id"`
+	TenantID    string         `json:"tenantId"`
+	Email       string         `json:"email"`
+	FirstName   string         `json:"firstName"`
+	LastName    string         `json:"lastName"`
+	Phone       *string        `json:"phone,omitempty"`
+	Address     map[string]any `json:"address,omitempty"`
+	Preferences map[string]any `json:"preferences,omitempty"`
+	IsActive    bool           `json:"isActive"`
+	Tags        map[string]any `json:"tags,omitempty"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
+	Tenant      *models.Tenant `json:"tenant"`
+	CreatedAt   time.Time      `json:"createdAt"`
+	UpdatedAt   time.Time      `json:"updatedAt"`
+}
+
 type LoginInput struct {
 	Email      string  `json:"email"`
 	Password   string  `json:"password"`
@@ -46,6 +92,30 @@ type LoginInput struct {
 }
 
 type Mutation struct {
+}
+
+type PaginatedCustomers struct {
+	Customers  []*CustomerProfile `json:"customers"`
+	Total      int32              `json:"total"`
+	Page       int32              `json:"page"`
+	Limit      int32              `json:"limit"`
+	TotalPages int32              `json:"totalPages"`
+}
+
+type PaginatedPermissions struct {
+	Permissions []*models.Permission `json:"permissions"`
+	Total       int32                `json:"total"`
+	Page        int32                `json:"page"`
+	Limit       int32                `json:"limit"`
+	TotalPages  int32                `json:"totalPages"`
+}
+
+type PaginatedRoles struct {
+	Roles      []*models.Role `json:"roles"`
+	Total      int32          `json:"total"`
+	Page       int32          `json:"page"`
+	Limit      int32          `json:"limit"`
+	TotalPages int32          `json:"totalPages"`
 }
 
 type PaginatedTenants struct {
@@ -69,6 +139,17 @@ type PaginationInput struct {
 	Limit *int32 `json:"limit,omitempty"`
 }
 
+type PermissionCheck struct {
+	HasPermission bool    `json:"hasPermission"`
+	Permission    string  `json:"permission"`
+	Reason        *string `json:"reason,omitempty"`
+}
+
+type PermissionCheckInput struct {
+	Permission string  `json:"permission"`
+	TenantID   *string `json:"tenantId,omitempty"`
+}
+
 type Query struct {
 }
 
@@ -80,9 +161,25 @@ type RegisterInput struct {
 	TenantSlug *string `json:"tenantSlug,omitempty"`
 }
 
+type RolePermissionMatrix struct {
+	Role        string   `json:"role"`
+	Permissions []string `json:"permissions"`
+}
+
 type TenantFilter struct {
 	Status *models.TenantStatus `json:"status,omitempty"`
 	Name   *string              `json:"name,omitempty"`
+}
+
+type UpdateCustomerInput struct {
+	FirstName   *string        `json:"firstName,omitempty"`
+	LastName    *string        `json:"lastName,omitempty"`
+	Phone       *string        `json:"phone,omitempty"`
+	Address     map[string]any `json:"address,omitempty"`
+	Preferences map[string]any `json:"preferences,omitempty"`
+	IsActive    *bool          `json:"isActive,omitempty"`
+	Tags        map[string]any `json:"tags,omitempty"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
 }
 
 type UpdateRoleInput struct {
@@ -110,4 +207,284 @@ type UserFilter struct {
 	IsActive *bool   `json:"isActive,omitempty"`
 	RoleID   *string `json:"roleId,omitempty"`
 	TenantID *string `json:"tenantId,omitempty"`
+}
+
+type ActionType string
+
+const (
+	ActionTypeCreate ActionType = "CREATE"
+	ActionTypeRead   ActionType = "READ"
+	ActionTypeUpdate ActionType = "UPDATE"
+	ActionTypeDelete ActionType = "DELETE"
+	ActionTypeList   ActionType = "LIST"
+	ActionTypeManage ActionType = "MANAGE"
+	ActionTypeView   ActionType = "VIEW"
+	ActionTypeExport ActionType = "EXPORT"
+	ActionTypeImport ActionType = "IMPORT"
+)
+
+var AllActionType = []ActionType{
+	ActionTypeCreate,
+	ActionTypeRead,
+	ActionTypeUpdate,
+	ActionTypeDelete,
+	ActionTypeList,
+	ActionTypeManage,
+	ActionTypeView,
+	ActionTypeExport,
+	ActionTypeImport,
+}
+
+func (e ActionType) IsValid() bool {
+	switch e {
+	case ActionTypeCreate, ActionTypeRead, ActionTypeUpdate, ActionTypeDelete, ActionTypeList, ActionTypeManage, ActionTypeView, ActionTypeExport, ActionTypeImport:
+		return true
+	}
+	return false
+}
+
+func (e ActionType) String() string {
+	return string(e)
+}
+
+func (e *ActionType) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = ActionType(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid ActionType", str)
+	}
+	return nil
+}
+
+func (e ActionType) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *ActionType) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e ActionType) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type PermissionScope string
+
+const (
+	PermissionScopeSystem PermissionScope = "SYSTEM"
+	PermissionScopeTenant PermissionScope = "TENANT"
+	PermissionScopeOwn    PermissionScope = "OWN"
+)
+
+var AllPermissionScope = []PermissionScope{
+	PermissionScopeSystem,
+	PermissionScopeTenant,
+	PermissionScopeOwn,
+}
+
+func (e PermissionScope) IsValid() bool {
+	switch e {
+	case PermissionScopeSystem, PermissionScopeTenant, PermissionScopeOwn:
+		return true
+	}
+	return false
+}
+
+func (e PermissionScope) String() string {
+	return string(e)
+}
+
+func (e *PermissionScope) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = PermissionScope(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid PermissionScope", str)
+	}
+	return nil
+}
+
+func (e PermissionScope) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *PermissionScope) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e PermissionScope) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type ResourceType string
+
+const (
+	ResourceTypeSystem        ResourceType = "SYSTEM"
+	ResourceTypeTenant        ResourceType = "TENANT"
+	ResourceTypePlan          ResourceType = "PLAN"
+	ResourceTypeModule        ResourceType = "MODULE"
+	ResourceTypeUser          ResourceType = "USER"
+	ResourceTypeRole          ResourceType = "ROLE"
+	ResourceTypePermission    ResourceType = "PERMISSION"
+	ResourceTypeSubscription  ResourceType = "SUBSCRIPTION"
+	ResourceTypeSystemSetting ResourceType = "SYSTEM_SETTING"
+	ResourceTypeAuditLog      ResourceType = "AUDIT_LOG"
+	ResourceTypeTenantUser    ResourceType = "TENANT_USER"
+	ResourceTypeTenantSetting ResourceType = "TENANT_SETTING"
+	ResourceTypeTenantModule  ResourceType = "TENANT_MODULE"
+	ResourceTypeDomainMapping ResourceType = "DOMAIN_MAPPING"
+	ResourceTypeTenantData    ResourceType = "TENANT_DATA"
+	ResourceTypeCustomer      ResourceType = "CUSTOMER"
+	ResourceTypeReport        ResourceType = "REPORT"
+	ResourceTypeDashboard     ResourceType = "DASHBOARD"
+)
+
+var AllResourceType = []ResourceType{
+	ResourceTypeSystem,
+	ResourceTypeTenant,
+	ResourceTypePlan,
+	ResourceTypeModule,
+	ResourceTypeUser,
+	ResourceTypeRole,
+	ResourceTypePermission,
+	ResourceTypeSubscription,
+	ResourceTypeSystemSetting,
+	ResourceTypeAuditLog,
+	ResourceTypeTenantUser,
+	ResourceTypeTenantSetting,
+	ResourceTypeTenantModule,
+	ResourceTypeDomainMapping,
+	ResourceTypeTenantData,
+	ResourceTypeCustomer,
+	ResourceTypeReport,
+	ResourceTypeDashboard,
+}
+
+func (e ResourceType) IsValid() bool {
+	switch e {
+	case ResourceTypeSystem, ResourceTypeTenant, ResourceTypePlan, ResourceTypeModule, ResourceTypeUser, ResourceTypeRole, ResourceTypePermission, ResourceTypeSubscription, ResourceTypeSystemSetting, ResourceTypeAuditLog, ResourceTypeTenantUser, ResourceTypeTenantSetting, ResourceTypeTenantModule, ResourceTypeDomainMapping, ResourceTypeTenantData, ResourceTypeCustomer, ResourceTypeReport, ResourceTypeDashboard:
+		return true
+	}
+	return false
+}
+
+func (e ResourceType) String() string {
+	return string(e)
+}
+
+func (e *ResourceType) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = ResourceType(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid ResourceType", str)
+	}
+	return nil
+}
+
+func (e ResourceType) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *ResourceType) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e ResourceType) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type SystemRole string
+
+const (
+	SystemRoleSuperAdmin    SystemRole = "SUPER_ADMIN"
+	SystemRoleSystemAdmin   SystemRole = "SYSTEM_ADMIN"
+	SystemRoleSystemManager SystemRole = "SYSTEM_MANAGER"
+	SystemRoleSystemSupport SystemRole = "SYSTEM_SUPPORT"
+	SystemRoleTenantAdmin   SystemRole = "TENANT_ADMIN"
+	SystemRoleTenantManager SystemRole = "TENANT_MANAGER"
+	SystemRoleTenantUser    SystemRole = "TENANT_USER"
+	SystemRoleCustomer      SystemRole = "CUSTOMER"
+)
+
+var AllSystemRole = []SystemRole{
+	SystemRoleSuperAdmin,
+	SystemRoleSystemAdmin,
+	SystemRoleSystemManager,
+	SystemRoleSystemSupport,
+	SystemRoleTenantAdmin,
+	SystemRoleTenantManager,
+	SystemRoleTenantUser,
+	SystemRoleCustomer,
+}
+
+func (e SystemRole) IsValid() bool {
+	switch e {
+	case SystemRoleSuperAdmin, SystemRoleSystemAdmin, SystemRoleSystemManager, SystemRoleSystemSupport, SystemRoleTenantAdmin, SystemRoleTenantManager, SystemRoleTenantUser, SystemRoleCustomer:
+		return true
+	}
+	return false
+}
+
+func (e SystemRole) String() string {
+	return string(e)
+}
+
+func (e *SystemRole) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = SystemRole(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid SystemRole", str)
+	}
+	return nil
+}
+
+func (e SystemRole) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *SystemRole) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e SystemRole) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
 }
