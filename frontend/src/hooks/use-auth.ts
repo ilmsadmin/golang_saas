@@ -64,45 +64,30 @@ export function useLogin() {
 
   const login = async (input: LoginInput) => {
     try {
-      debugLog('Login Input', input);
       
       const { data } = await loginMutation({
         variables: { input },
       });
 
-      debugLog('Login Mutation Raw Response', data);
-
       if (data?.login) {
         const { user, token, refreshToken } = data.login;
-        
-        debugLog('Login Success - User Data', user);
-        debugLog('Login Success - Token', token);
-        debugLog('Login Success - Refresh Token', refreshToken);
         
         // Store tokens in localStorage
         if (typeof window !== 'undefined') {
           localStorage.setItem('access_token', token);
           localStorage.setItem('refresh_token', refreshToken);
           localStorage.setItem('user', JSON.stringify(user));
-          
-          debugLog('Stored in localStorage', {
-            access_token: localStorage.getItem('access_token'),
-            user: localStorage.getItem('user')
-          });
         }
 
         // Redirect based on user role and tenant context
-        debugLog('Redirecting user with role', user.role.name);
         const tenantSlug = getCurrentTenantSlug();
         const redirectUrl = getRedirectUrlByRole(user.role.name, tenantSlug || undefined);
         router.push(redirectUrl);
         return { success: true, user };
       } else {
-        debugLog('Login Failed - No data returned', data);
         throw new Error('Invalid response from server');
       }
     } catch (err) {
-      debugLog('Login Error', err);
       console.error('Login error:', err);
       throw err;
     }
@@ -169,7 +154,6 @@ export function useRegister() {
         variables: { input },
       });
 
-      debugLog('Register Mutation Response', data);
 
       if (data?.register) {
         const { user, token, refreshToken } = data.register;
@@ -206,14 +190,13 @@ export function useCurrentUser() {
     errorPolicy: 'all',
     skip: typeof window === 'undefined', // Skip on server side
     onCompleted: (data) => {
-      debugLog('ME Query Completed', data);
+
     },
     onError: (error) => {
-      debugLog('ME Query Error', error);
+
     }
   });
 
-  debugLog('Current User Query State', { data, loading, error });
 
   return {
     user: data?.me,
@@ -236,7 +219,6 @@ export function useRefreshToken() {
         variables: { token },
       });
 
-      debugLog('Refresh Token Mutation Response', data);
 
       if (data?.refreshToken) {
         const { token: newToken, refreshToken: newRefreshToken, user } = data.refreshToken;

@@ -91,6 +91,14 @@ export function CardDescription({ children, className }: CardDescriptionProps) {
   );
 }
 
+export function CardContent({ children, className }: CardBodyProps) {
+  return (
+    <div className={cn('p-6 pt-0', className)}>
+      {children}
+    </div>
+  );
+}
+
 // Stats Card Component
 interface StatsCardProps {
   title: string;

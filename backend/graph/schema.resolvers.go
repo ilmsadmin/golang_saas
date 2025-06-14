@@ -12,31 +12,141 @@ import (
 	"golang_saas/middleware"
 	"golang_saas/models"
 	"golang_saas/services"
-	
+
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
+// RefreshToken is the resolver for the refreshToken field.
+func (r *mutationResolver) RefreshToken(ctx context.Context, refreshToken string) (*model.AuthPayload, error) {
+	authService := services.NewAuthService()
+	
+	authResponse, err := authService.RefreshToken(refreshToken)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Convert to GraphQL response
+	result := &model.AuthPayload{
+		Token:        authResponse.Token,
+		RefreshToken: authResponse.RefreshToken,
+		User:         authResponse.User,
+		Permissions:  authResponse.Permissions,
+	}
+	
+	// Add tenant if user has one
+	if authResponse.User.TenantID != nil {
+		var tenant models.Tenant
+		if err := r.DB.First(&tenant, "id = ?", *authResponse.User.TenantID).Error; err == nil {
+			result.Tenant = &tenant
+		}
+	}
+	
+	return result, nil
+}
+
 // Register is the resolver for the register field.
 func (r *mutationResolver) Register(ctx context.Context, input model.RegisterInput) (*model.AuthPayload, error) {
-	authService := services.NewAuthService(r.DB)
-	return authService.Register(ctx, input)
+
+	authService := services.NewAuthService()
+	
+	// Convert GraphQL input to service request
+	req := services.RegisterRequest{
+		Email:     input.Email,
+		Password:  input.Password,
+		FirstName: input.FirstName,
+		LastName:  input.LastName,
+	}
+	
+	// Parse tenant slug if provided and get tenant ID
+	if input.TenantSlug != nil {
+		var tenant models.Tenant
+		if err := r.DB.Where("slug = ?", *input.TenantSlug).First(&tenant).Error; err != nil {
+			return nil, fmt.Errorf("tenant not found: %w", err)
+		}
+		req.TenantID = &tenant.ID
+	}
+	
+	authResponse, err := authService.Register(req)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Convert to GraphQL response
+	result := &model.AuthPayload{
+		Token:        authResponse.Token,
+		RefreshToken: authResponse.RefreshToken,
+		User:         authResponse.User,
+		Permissions:  authResponse.Permissions,
+	}
+	
+	// Add tenant if user has one
+	if authResponse.User.TenantID != nil {
+		var tenant models.Tenant
+		if err := r.DB.First(&tenant, "id = ?", *authResponse.User.TenantID).Error; err == nil {
+			result.Tenant = &tenant
+		}
+	}
+	
+	return result, nil
 }
 
 // Login is the resolver for the login field.
 func (r *mutationResolver) Login(ctx context.Context, input model.LoginInput) (*model.AuthPayload, error) {
-	authService := services.NewAuthService(r.DB)
-	return authService.Login(ctx, input)
-}
+
 
 // RefreshToken is the resolver for the refreshToken field.
 func (r *mutationResolver) RefreshToken(ctx context.Context, token string) (*model.AuthPayload, error) {
 	panic(fmt.Errorf("not implemented: RefreshToken - refreshToken"))
+
+	authService := services.NewAuthService()
+	
+	// Convert GraphQL input to service request
+	req := services.LoginRequest{
+		Email:    input.Email,
+		Password: input.Password,
+	}
+	
+	var tenantID *uuid.UUID
+	
+	// Parse tenant slug if provided and get tenant ID
+	if input.TenantSlug != nil {
+		var tenant models.Tenant
+		if err := r.DB.Where("slug = ?", *input.TenantSlug).First(&tenant).Error; err != nil {
+			return nil, fmt.Errorf("tenant not found: %w", err)
+		}
+		tenantID = &tenant.ID
+	}
+	
+	authResponse, err := authService.Login(req, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Convert to GraphQL response
+	result := &model.AuthPayload{
+		Token:        authResponse.Token,
+		RefreshToken: authResponse.RefreshToken,
+		User:         authResponse.User,
+		Permissions:  authResponse.Permissions,
+	}
+	
+	// Add tenant if user has one
+	if authResponse.User.TenantID != nil {
+		var tenant models.Tenant
+		if err := r.DB.First(&tenant, "id = ?", *authResponse.User.TenantID).Error; err == nil {
+			result.Tenant = &tenant
+		}
+	}
+	
+	return result, nil
 }
 
 // Logout is the resolver for the logout field.
 func (r *mutationResolver) Logout(ctx context.Context) (bool, error) {
-	panic(fmt.Errorf("not implemented: Logout - logout"))
+	// For JWT, logout is typically handled client-side by removing the token
+	// Here we could implement token blacklisting if needed
+	return true, nil
 }
 
 // CreateTenant is the resolver for the createTenant field.
@@ -344,12 +454,15 @@ func (r *mutationResolver) InitializeTenantRoles(ctx context.Context, tenantID s
 
 // ID is the resolver for the id field.
 func (r *permissionResolver) ID(ctx context.Context, obj *models.Permission) (string, error) {
-	panic(fmt.Errorf("not implemented: ID - id"))
+	return obj.ID.String(), nil
 }
 
 // Scope is the resolver for the scope field.
 func (r *permissionResolver) Scope(ctx context.Context, obj *models.Permission) (model.PermissionScope, error) {
-	panic(fmt.Errorf("not implemented: Scope - scope"))
+	if obj.IsSystem {
+		return model.PermissionScopeSystem, nil
+	}
+	return model.PermissionScopeTenant, nil
 }
 
 // ID is the resolver for the id field.
@@ -378,12 +491,26 @@ func (r *planResolver) MaxUsers(ctx context.Context, obj *models.Plan) (int32, e
 
 // Me is the resolver for the me field.
 func (r *queryResolver) Me(ctx context.Context) (*models.User, error) {
-	userService := services.NewUserService(r.DB)
-	return userService.GetCurrentUser(ctx)
-}
 
-// MyPermissions is the resolver for the myPermissions field.
-func (r *queryResolver) MyPermissions(ctx context.Context) ([]string, error) {
+	// Get user from context (set by auth middleware)
+	userID, exists := ctx.Value("user_id").(string)
+	if !exists {
+		return nil, fmt.Errorf("user not authenticated")
+	}
+	
+	// Parse user ID
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %v", err)
+	}
+	
+	// Get user from database
+	var user models.User
+	if err := r.DB.Preload("Role").First(&user, "id = ?", userUUID).Error; err != nil {
+		return nil, fmt.Errorf("user not found: %v", err)
+	}
+	
+	return &user, nil
 	userID := ctx.Value("userID")
 	if userID == nil {
 		return []string{}, nil
@@ -401,16 +528,13 @@ func (r *queryResolver) MyPermissions(ctx context.Context) ([]string, error) {
 	}
 
 	return permissions, nil
+
+	panic(fmt.Errorf("not implemented: MyPermissions - myPermissions"))
 }
 
 // CheckPermission is the resolver for the checkPermission field.
 func (r *queryResolver) CheckPermission(ctx context.Context, input model.PermissionCheckInput) (*model.PermissionCheck, error) {
-	// For now, return a basic response
-	return &model.PermissionCheck{
-		HasPermission: false,
-		Permission:    input.Permission,
-		Reason:        strPtr("Not implemented yet"),
-	}, nil
+	panic(fmt.Errorf("not implemented: CheckPermission - checkPermission"))
 }
 
 // Users is the resolver for the users field.
@@ -587,7 +711,11 @@ func (r *roleResolver) ID(ctx context.Context, obj *models.Role) (string, error)
 
 // TenantID is the resolver for the tenantId field.
 func (r *roleResolver) TenantID(ctx context.Context, obj *models.Role) (*string, error) {
-	panic(fmt.Errorf("not implemented: TenantID - tenantId"))
+	if obj.TenantID == nil {
+		return nil, nil
+	}
+	tenantIDStr := obj.TenantID.String()
+	return &tenantIDStr, nil
 }
 
 // UsersCount is the resolver for the usersCount field.
@@ -637,7 +765,11 @@ func (r *userResolver) ID(ctx context.Context, obj *models.User) (string, error)
 
 // TenantID is the resolver for the tenantId field.
 func (r *userResolver) TenantID(ctx context.Context, obj *models.User) (*string, error) {
-	panic(fmt.Errorf("not implemented: TenantID - tenantId"))
+	if obj.TenantID == nil {
+		return nil, nil
+	}
+	tenantIDStr := obj.TenantID.String()
+	return &tenantIDStr, nil
 }
 
 // DirectPermissions is the resolver for the directPermissions field.
@@ -688,6 +820,7 @@ type systemSettingsResolver struct{ *Resolver }
 type tenantResolver struct{ *Resolver }
 type tenantSubscriptionResolver struct{ *Resolver }
 type userResolver struct{ *Resolver }
+
 
 // Helper function to create string pointers
 func strPtr(s string) *string {

@@ -324,7 +324,7 @@ func GetRolePermissions() []RolePermissionMatrix {
 // CustomerProfile represents end customer profile for tenant businesses
 type CustomerProfile struct {
 	BaseModel
-	TenantID    uuid.UUID      `json:"tenant_id" gorm:"type:char(36);not null;index"`
+	TenantID    uuid.UUID      `json:"tenant_id" gorm:"type:uuid;not null;index"`
 	Email       string         `json:"email" gorm:"not null"`
 	FirstName   string         `json:"first_name" gorm:"not null"`
 	LastName    string         `json:"last_name" gorm:"not null"`

@@ -31,9 +31,6 @@ const authLink = setContext(async (_, { headers }) => {
     'Content-Type': 'application/json',
   };
   
-  console.log('[Apollo Client Debug] Request Headers:', requestHeaders);
-  console.log('[Apollo Client Debug] Token:', token);
-  console.log('[Apollo Client Debug] Subdomain:', subdomain);
   
   return {
     headers: requestHeaders

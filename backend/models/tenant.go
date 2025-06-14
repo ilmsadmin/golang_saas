@@ -12,8 +12,8 @@ import (
 // TenantUser represents tenant-specific user data
 type TenantUser struct {
 	BaseModel
-	UserID           uuid.UUID      `json:"user_id" gorm:"type:char(36);not null;index"`
-	TenantID         uuid.UUID      `json:"tenant_id" gorm:"type:char(36);not null;index"`
+	UserID           uuid.UUID      `json:"user_id" gorm:"type:uuid;not null;index"`
+	TenantID         uuid.UUID      `json:"tenant_id" gorm:"type:uuid;not null;index"`
 	AvatarURL        *string        `json:"avatar_url"`
 	Phone            *string        `json:"phone"`
 	Preferences      datatypes.JSON `json:"preferences" gorm:"type:jsonb"`
@@ -28,7 +28,7 @@ type TenantUser struct {
 // TenantSettings represents tenant-specific configuration
 type TenantSettings struct {
 	BaseModel
-	TenantID uuid.UUID      `json:"tenant_id" gorm:"type:char(36);not null;uniqueIndex"`
+	TenantID uuid.UUID      `json:"tenant_id" gorm:"type:uuid;not null;uniqueIndex"`
 	Key      string         `json:"key" gorm:"not null"`
 	Value    datatypes.JSON `json:"value" gorm:"type:jsonb"`
 
@@ -38,7 +38,7 @@ type TenantSettings struct {
 
 // TenantModule represents modules enabled for a tenant
 type TenantModule struct {
-	TenantID      uuid.UUID      `json:"tenant_id" gorm:"type:char(36);primary_key"`
+	TenantID      uuid.UUID      `json:"tenant_id" gorm:"type:uuid;primary_key"`
 	ModuleID      string         `json:"module_id" gorm:"primary_key"`
 	IsEnabled     bool           `json:"is_enabled" gorm:"default:true"`
 	Configuration datatypes.JSON `json:"configuration" gorm:"type:jsonb"`
@@ -66,7 +66,7 @@ type Module struct {
 type DomainMapping struct {
 	BaseModel
 	Domain     string     `json:"domain" gorm:"uniqueIndex;not null"`
-	TenantID   uuid.UUID  `json:"tenant_id" gorm:"type:char(36);not null"`
+	TenantID   uuid.UUID  `json:"tenant_id" gorm:"type:uuid;not null"`
 	IsPrimary  bool       `json:"is_primary" gorm:"default:false"`
 	SSLEnabled bool       `json:"ssl_enabled" gorm:"default:false"`
 	Status     string     `json:"status" gorm:"default:pending"`
@@ -79,8 +79,8 @@ type DomainMapping struct {
 // AuditLog represents audit trail for tenant operations
 type AuditLog struct {
 	BaseModel
-	TenantID   uuid.UUID      `json:"tenant_id" gorm:"type:char(36);not null;index"`
-	UserID     uuid.UUID      `json:"user_id" gorm:"type:char(36);not null"`
+	TenantID   uuid.UUID      `json:"tenant_id" gorm:"type:uuid;not null;index"`
+	UserID     uuid.UUID      `json:"user_id" gorm:"type:uuid;not null"`
 	Action     string         `json:"action" gorm:"not null"`
 	Resource   string         `json:"resource" gorm:"not null"`
 	ResourceID *string        `json:"resource_id"`
