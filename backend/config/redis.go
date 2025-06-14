@@ -18,18 +18,21 @@ func InitRedis() {
 		Addr:         addr,
 		Password:     AppConfig.RedisPassword,
 		DB:           0, // default DB
-		DialTimeout:  10 * time.Second,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		DialTimeout:  2 * time.Second,  // Reduced timeout
+		ReadTimeout:  5 * time.Second,  // Reduced timeout
+		WriteTimeout: 5 * time.Second,  // Reduced timeout
 		PoolSize:     10,
-		PoolTimeout:  30 * time.Second,
+		PoolTimeout:  5 * time.Second,  // Reduced timeout
 	})
 
 	// Test connection
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
 	_, err := RedisClient.Ping(ctx).Result()
 	if err != nil {
-		log.Fatal("Failed to connect to Redis:", err)
+		log.Printf("Warning: Failed to connect to Redis: %v. Continuing without Redis cache.", err)
+		RedisClient = nil
+		return
 	}
 
 	log.Println("Redis connection established")

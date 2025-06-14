@@ -9,6 +9,7 @@ import (
 
 	"gorm.io/datatypes"
 	"gorm.io/driver/postgres"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -22,15 +23,22 @@ var (
 func InitDatabase() {
 	var err error
 
-	// Create database connection
-	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		AppConfig.DBHost,
-		AppConfig.DBPort,
-		AppConfig.DBUser,
-		AppConfig.DBPassword,
-		AppConfig.DBName,
-		AppConfig.DBSSLMode,
-	)
+	// Use SQLite for testing if DB_NAME is test_db, otherwise use PostgreSQL
+	var dialector gorm.Dialector
+	if AppConfig.DBName == "test_db" {
+		dialector = sqlite.Open("test.db")
+	} else {
+		// Create database connection
+		dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+			AppConfig.DBHost,
+			AppConfig.DBPort,
+			AppConfig.DBUser,
+			AppConfig.DBPassword,
+			AppConfig.DBName,
+			AppConfig.DBSSLMode,
+		)
+		dialector = postgres.Open(dsn)
+	}
 
 	// Set logging level based on environment
 	var logLevel logger.LogLevel
@@ -40,7 +48,7 @@ func InitDatabase() {
 		logLevel = logger.Error
 	}
 
-	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
+	DB, err = gorm.Open(dialector, &gorm.Config{
 		Logger: logger.Default.LogMode(logLevel),
 	})
 	if err != nil {
@@ -50,9 +58,11 @@ func InitDatabase() {
 	// Initialize tenant database map
 	TenantDBs = make(map[string]*gorm.DB)
 
-	// Enable UUID extension
-	if err := DB.Exec("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"").Error; err != nil {
-		log.Printf("Warning: Could not create UUID extension: %v", err)
+	// Enable UUID extension for PostgreSQL only
+	if AppConfig.DBName != "test_db" {
+		if err := DB.Exec("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"").Error; err != nil {
+			log.Printf("Warning: Could not create UUID extension: %v", err)
+		}
 	}
 
 	// Auto-migrate system models
@@ -70,6 +80,7 @@ func InitDatabase() {
 		&models.Module{},
 		&models.DomainMapping{},
 		&models.AuditLog{},
+		&models.CustomerProfile{}, // Add the missing model
 	)
 	if err != nil {
 		log.Fatal("Failed to auto-migrate models:", err)
