@@ -56,13 +56,16 @@ type Tenant {
   id: ID!
   name: String!
   slug: String!
-  domain: String
   subdomain: String!
+  customDomains: JSON
   status: TenantStatus!
   settings: JSON
+  billingInfo: JSON
+  resourceLimits: JSON
   users: [User!]!
   roles: [Role!]!
   subscription: TenantSubscription
+  domainMappings: [DomainMapping!]!
   createdAt: Time!
   updatedAt: Time!
 }
@@ -83,9 +86,14 @@ type TenantSubscription {
 type Plan {
   id: ID!
   name: String!
+  slug: String!
   description: String
   price: Float!
+  billingCycle: String!
   features: JSON!
+  limits: JSON!
+  isActive: Boolean!
+  sortOrder: Int!
   maxUsers: Int!
   subscriptions: [TenantSubscription!]!
   createdAt: Time!
@@ -98,6 +106,97 @@ type SystemSettings {
   key: String!
   value: JSON!
   description: String
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+type SystemUser {
+  id: ID!
+  email: String!
+  firstName: String!
+  lastName: String!
+  role: String!
+  permissions: JSON!
+  isActive: Boolean!
+  lastLogin: Time
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+type SystemAuditLog {
+  id: ID!
+  systemUserId: ID
+  tenantId: ID
+  action: String!
+  resource: String!
+  resourceId: String
+  oldValues: JSON
+  newValues: JSON
+  ipAddress: String
+  userAgent: String
+  systemUser: SystemUser
+  tenant: Tenant
+  createdAt: Time!
+}
+
+type UserSession {
+  id: ID!
+  userId: ID!
+  tenantId: ID!
+  tokenHash: String!
+  refreshTokenHash: String
+  ipAddress: String
+  userAgent: String
+  expiresAt: Time!
+  lastActivity: Time!
+  isRevoked: Boolean!
+  user: User!
+  tenant: Tenant!
+  createdAt: Time!
+}
+
+type Notification {
+  id: ID!
+  tenantId: ID!
+  title: String!
+  message: String!
+  type: String!
+  recipients: JSON!
+  channels: JSON!
+  status: String!
+  scheduledAt: Time
+  sentAt: Time
+  metadata: JSON
+  createdBy: ID!
+  tenant: Tenant!
+  creator: User!
+  userNotifications: [UserNotification!]!
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+type UserNotification {
+  id: ID!
+  userId: ID!
+  tenantId: ID!
+  notificationId: ID!
+  isRead: Boolean!
+  readAt: Time
+  user: User!
+  tenant: Tenant!
+  notification: Notification!
+  createdAt: Time!
+}
+
+type DomainMapping {
+  id: ID!
+  domain: String!
+  tenantId: ID!
+  isPrimary: Boolean!
+  sslEnabled: Boolean!
+  status: String!
+  verifiedAt: Time
+  tenant: Tenant!
   createdAt: Time!
   updatedAt: Time!
 }
@@ -142,20 +241,24 @@ input LoginInput {
 input CreateTenantInput {
   name: String!
   slug: String!
-  domain: String
   subdomain: String!
+  customDomains: JSON
   adminEmail: String!
   adminPassword: String!
   adminFirstName: String!
   adminLastName: String!
   planId: ID!
+  billingInfo: JSON
+  resourceLimits: JSON
 }
 
 input UpdateTenantInput {
   name: String
-  domain: String
+  customDomains: JSON
   status: TenantStatus
   settings: JSON
+  billingInfo: JSON
+  resourceLimits: JSON
 }
 
 input CreateUserInput {
@@ -187,17 +290,27 @@ input UpdateRoleInput {
 
 input CreatePlanInput {
   name: String!
+  slug: String!
   description: String
   price: Float!
+  billingCycle: String!
   features: JSON!
+  limits: JSON!
+  isActive: Boolean
+  sortOrder: Int
   maxUsers: Int!
 }
 
 input UpdatePlanInput {
   name: String
+  slug: String
   description: String
   price: Float
+  billingCycle: String
   features: JSON
+  limits: JSON
+  isActive: Boolean
+  sortOrder: Int
   maxUsers: Int
 }
 

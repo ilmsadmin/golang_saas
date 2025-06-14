@@ -23,12 +23,17 @@ func main() {
 		&models.Subscription{},
 		&models.Plan{},
 		&models.SystemSettings{},
+		&models.SystemUser{},
+		&models.SystemAuditLog{},
 		&models.TenantUser{},
 		&models.TenantSettings{},
 		&models.TenantModule{},
 		&models.Module{},
 		&models.DomainMapping{},
 		&models.AuditLog{},
+		&models.UserSession{},
+		&models.Notification{},
+		&models.UserNotification{},
 		&models.CustomerProfile{},
 	)
 	if err != nil {
@@ -76,9 +81,11 @@ func createSystemPlans() error {
 
 	plans := []models.Plan{
 		{
-			Name:        "Starter",
-			Description: stringPtr("Basic plan for small businesses"),
-			Price:       9.99,
+			Name:         "Starter",
+			Slug:         "starter",
+			Description:  stringPtr("Basic plan for small businesses"),
+			Price:        9.99,
+			BillingCycle: "monthly",
 			Features: toJSON(map[string]interface{}{
 				"max_users":     5,
 				"storage_gb":    1,
@@ -86,12 +93,21 @@ func createSystemPlans() error {
 				"support":       "email",
 				"custom_domain": false,
 			}),
-			MaxUsers: 5,
+			Limits: toJSON(map[string]interface{}{
+				"api_calls_per_hour": 100,
+				"storage_gb":         1,
+				"integrations":       3,
+			}),
+			IsActive:  true,
+			SortOrder: 1,
+			MaxUsers:  5,
 		},
 		{
-			Name:        "Professional",
-			Description: stringPtr("Advanced plan for growing businesses"),
-			Price:       29.99,
+			Name:         "Professional",
+			Slug:         "professional",
+			Description:  stringPtr("Advanced plan for growing businesses"),
+			Price:        29.99,
+			BillingCycle: "monthly",
 			Features: toJSON(map[string]interface{}{
 				"max_users":     25,
 				"storage_gb":    10,
@@ -99,12 +115,21 @@ func createSystemPlans() error {
 				"support":       "priority",
 				"custom_domain": true,
 			}),
-			MaxUsers: 25,
+			Limits: toJSON(map[string]interface{}{
+				"api_calls_per_hour": 1000,
+				"storage_gb":         10,
+				"integrations":       20,
+			}),
+			IsActive:  true,
+			SortOrder: 2,
+			MaxUsers:  25,
 		},
 		{
-			Name:        "Enterprise",
-			Description: stringPtr("Full-featured plan for large organizations"),
-			Price:       99.99,
+			Name:         "Enterprise",
+			Slug:         "enterprise",
+			Description:  stringPtr("Full-featured plan for large organizations"),
+			Price:        99.99,
+			BillingCycle: "monthly",
 			Features: toJSON(map[string]interface{}{
 				"max_users":     -1, // unlimited
 				"storage_gb":    100,
@@ -113,16 +138,30 @@ func createSystemPlans() error {
 				"custom_domain": true,
 				"sso":           true,
 			}),
-			MaxUsers: 1000,
+			Limits: toJSON(map[string]interface{}{
+				"api_calls_per_hour": 10000,
+				"storage_gb":         100,
+				"integrations":       -1, // unlimited
+			}),
+			IsActive:  true,
+			SortOrder: 3,
+			MaxUsers:  1000,
 		},
 	}
 
 	for _, plan := range plans {
-		err := config.DB.Create(&plan).Error
-		if err != nil {
-			return err
+		var existingPlan models.Plan
+		if err := config.DB.Where("slug = ?", plan.Slug).First(&existingPlan).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				err := config.DB.Create(&plan).Error
+				if err != nil {
+					return err
+				}
+				log.Printf("Created plan: %s", plan.Name)
+			}
+		} else {
+			log.Printf("Plan %s already exists, skipping...", plan.Name)
 		}
-		log.Printf("Created plan: %s", plan.Name)
 	}
 
 	return nil

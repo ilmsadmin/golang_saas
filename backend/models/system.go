@@ -82,17 +82,20 @@ const (
 // Tenant represents a tenant in the multi-tenant system
 type Tenant struct {
 	BaseModel
-	Name      string                 `json:"name" gorm:"not null"`
-	Slug      string                 `json:"slug" gorm:"uniqueIndex;not null"`
-	Domain    *string                `json:"domain"`
-	Subdomain string                 `json:"subdomain" gorm:"uniqueIndex;not null"`
-	Status    TenantStatus           `json:"status" gorm:"default:ACTIVE"`
-	Settings  datatypes.JSON         `json:"settings" gorm:"type:jsonb"`
+	Name           string                 `json:"name" gorm:"not null"`
+	Slug           string                 `json:"slug" gorm:"uniqueIndex;not null"`
+	Subdomain      string                 `json:"subdomain" gorm:"uniqueIndex;not null"`
+	CustomDomains  datatypes.JSON         `json:"custom_domains" gorm:"type:jsonb"` // Array of custom domains
+	Status         TenantStatus           `json:"status" gorm:"default:ACTIVE"`
+	Settings       datatypes.JSON         `json:"settings" gorm:"type:jsonb"`
+	BillingInfo    datatypes.JSON         `json:"billing_info" gorm:"type:jsonb"`
+	ResourceLimits datatypes.JSON         `json:"resource_limits" gorm:"type:jsonb"`
 
 	// Relations
 	Users        []User         `json:"users,omitempty" gorm:"foreignKey:TenantID"`
 	Roles        []Role         `json:"roles,omitempty" gorm:"foreignKey:TenantID"`
 	Subscription *Subscription  `json:"subscription,omitempty" gorm:"foreignKey:TenantID"`
+	DomainMappings []DomainMapping `json:"domain_mappings,omitempty" gorm:"foreignKey:TenantID"`
 }
 
 // SubscriptionStatus enum
@@ -122,11 +125,16 @@ type Subscription struct {
 // Plan represents a subscription plan
 type Plan struct {
 	BaseModel
-	Name        string                 `json:"name" gorm:"not null"`
-	Description *string                `json:"description"`
-	Price       float64                `json:"price" gorm:"not null"`
-	Features    datatypes.JSON         `json:"features" gorm:"type:jsonb"`
-	MaxUsers    int                    `json:"max_users" gorm:"default:10"`
+	Name         string         `json:"name" gorm:"not null"`
+	Slug         string         `json:"slug" gorm:"uniqueIndex;not null"`
+	Description  *string        `json:"description"`
+	Price        float64        `json:"price" gorm:"type:decimal(10,2);not null"`
+	BillingCycle string         `json:"billing_cycle" gorm:"default:monthly"` // monthly, yearly
+	Features     datatypes.JSON `json:"features" gorm:"type:jsonb"`
+	Limits       datatypes.JSON `json:"limits" gorm:"type:jsonb"`
+	IsActive     bool           `json:"is_active" gorm:"default:true"`
+	SortOrder    int            `json:"sort_order" gorm:"default:0"`
+	MaxUsers     int            `json:"max_users" gorm:"default:10"`
 
 	// Relations
 	Subscriptions []Subscription `json:"subscriptions,omitempty" gorm:"foreignKey:PlanID"`
@@ -138,6 +146,37 @@ type SystemSettings struct {
 	Key         string         `json:"key" gorm:"uniqueIndex;not null"`
 	Value       datatypes.JSON `json:"value" gorm:"type:jsonb"`
 	Description *string        `json:"description"`
+}
+
+// SystemUser represents system administrators who manage the platform  
+type SystemUser struct {
+	BaseModel
+	Email        string         `json:"email" gorm:"uniqueIndex;not null"`
+	PasswordHash string         `json:"-" gorm:"not null"`
+	FirstName    string         `json:"first_name"`
+	LastName     string         `json:"last_name"`
+	Role         string         `json:"role" gorm:"not null"` // super_admin, system_admin, system_manager
+	Permissions  datatypes.JSON `json:"permissions" gorm:"type:jsonb"`
+	IsActive     bool           `json:"is_active" gorm:"default:true"`
+	LastLogin    *time.Time     `json:"last_login"`
+}
+
+// SystemAuditLog represents audit trail for system-level operations
+type SystemAuditLog struct {
+	BaseModel
+	SystemUserID *uuid.UUID     `json:"system_user_id" gorm:"type:char(36);index"`
+	TenantID     *uuid.UUID     `json:"tenant_id" gorm:"type:char(36);index"`
+	Action       string         `json:"action" gorm:"not null"`
+	Resource     string         `json:"resource" gorm:"not null"`
+	ResourceID   *string        `json:"resource_id"`
+	OldValues    datatypes.JSON `json:"old_values" gorm:"type:jsonb"`
+	NewValues    datatypes.JSON `json:"new_values" gorm:"type:jsonb"`
+	IPAddress    *string        `json:"ip_address"`
+	UserAgent    *string        `json:"user_agent"`
+
+	// Relations
+	SystemUser *SystemUser `json:"system_user,omitempty" gorm:"foreignKey:SystemUserID"`
+	Tenant     *Tenant     `json:"tenant,omitempty" gorm:"foreignKey:TenantID"`
 }
 
 // UserRole enum for backward compatibility
