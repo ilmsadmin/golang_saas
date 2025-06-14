@@ -8,22 +8,24 @@ import (
 	"context"
 	"fmt"
 	"golang_saas/graph/model"
+	"golang_saas/middleware"
 	"golang_saas/models"
 	"golang_saas/services"
 	
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // Register is the resolver for the register field.
 func (r *mutationResolver) Register(ctx context.Context, input model.RegisterInput) (*model.AuthPayload, error) {
-	// For now, just return a simple implementation
-	return nil, fmt.Errorf("register functionality not implemented yet")
+	authService := services.NewAuthService(r.DB)
+	return authService.Register(ctx, input)
 }
 
 // Login is the resolver for the login field.
 func (r *mutationResolver) Login(ctx context.Context, input model.LoginInput) (*model.AuthPayload, error) {
-	// For now, just return a simple implementation
-	return nil, fmt.Errorf("login functionality not implemented yet")
+	authService := services.NewAuthService(r.DB)
+	return authService.Login(ctx, input)
 }
 
 // RefreshToken is the resolver for the refreshToken field.
@@ -38,17 +40,33 @@ func (r *mutationResolver) Logout(ctx context.Context) (bool, error) {
 
 // CreateTenant is the resolver for the createTenant field.
 func (r *mutationResolver) CreateTenant(ctx context.Context, input model.CreateTenantInput) (*models.Tenant, error) {
-	panic(fmt.Errorf("not implemented: CreateTenant - createTenant"))
+	// Check system admin permissions
+	if err := requireSystemPermission(ctx, r.DB, "tenant.create"); err != nil {
+		return nil, err
+	}
+
+	tenantService := services.NewTenantService(r.DB)
+	return tenantService.CreateTenant(ctx, input)
 }
 
 // UpdateTenant is the resolver for the updateTenant field.
 func (r *mutationResolver) UpdateTenant(ctx context.Context, id string, input model.UpdateTenantInput) (*models.Tenant, error) {
-	panic(fmt.Errorf("not implemented: UpdateTenant - updateTenant"))
+	if err := requireSystemPermission(ctx, r.DB, "tenant.update"); err != nil {
+		return nil, err
+	}
+
+	tenantService := services.NewTenantService(r.DB)
+	return tenantService.UpdateTenant(ctx, id, input)
 }
 
 // DeleteTenant is the resolver for the deleteTenant field.
 func (r *mutationResolver) DeleteTenant(ctx context.Context, id string) (bool, error) {
-	panic(fmt.Errorf("not implemented: DeleteTenant - deleteTenant"))
+	if err := requireSystemPermission(ctx, r.DB, "tenant.delete"); err != nil {
+		return false, err
+	}
+
+	tenantService := services.NewTenantService(r.DB)
+	return tenantService.DeleteTenant(ctx, id)
 }
 
 // CreateUser is the resolver for the createUser field.
@@ -194,17 +212,28 @@ func (r *queryResolver) User(ctx context.Context, id string) (*models.User, erro
 
 // Tenants is the resolver for the tenants field.
 func (r *queryResolver) Tenants(ctx context.Context, filter *model.TenantFilter, pagination *model.PaginationInput) (*model.PaginatedTenants, error) {
-	panic(fmt.Errorf("not implemented: Tenants - tenants"))
+	if err := requireSystemPermission(ctx, r.DB, "tenant.list"); err != nil {
+		return nil, err
+	}
+
+	tenantService := services.NewTenantService(r.DB)
+	return tenantService.ListTenants(ctx, filter, pagination)
 }
 
 // Tenant is the resolver for the tenant field.
 func (r *queryResolver) Tenant(ctx context.Context, id string) (*models.Tenant, error) {
-	panic(fmt.Errorf("not implemented: Tenant - tenant"))
+	if err := requireSystemPermission(ctx, r.DB, "tenant.read"); err != nil {
+		return nil, err
+	}
+
+	tenantService := services.NewTenantService(r.DB)
+	return tenantService.GetTenant(ctx, id)
 }
 
 // TenantBySlug is the resolver for the tenantBySlug field.
 func (r *queryResolver) TenantBySlug(ctx context.Context, slug string) (*models.Tenant, error) {
-	panic(fmt.Errorf("not implemented: TenantBySlug - tenantBySlug"))
+	tenantService := services.NewTenantService(r.DB)
+	return tenantService.GetTenantBySlug(ctx, slug)
 }
 
 // Roles is the resolver for the roles field.
@@ -244,7 +273,19 @@ func (r *queryResolver) Customer(ctx context.Context, id string) (*model.Custome
 
 // Plans is the resolver for the plans field.
 func (r *queryResolver) Plans(ctx context.Context) ([]*models.Plan, error) {
-	panic(fmt.Errorf("not implemented: Plans - plans"))
+	var plans []models.Plan
+	err := r.DB.Find(&plans).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to load plans: %v", err)
+	}
+
+	// Convert to pointers
+	var planPtrs []*models.Plan
+	for i := range plans {
+		planPtrs = append(planPtrs, &plans[i])
+	}
+
+	return planPtrs, nil
 }
 
 // Plan is the resolver for the plan field.
@@ -369,4 +410,14 @@ type userResolver struct{ *Resolver }
 // Helper function to create string pointers
 func strPtr(s string) *string {
 	return &s
+}
+
+// Helper function to check system permissions
+func requireSystemPermission(ctx context.Context, db *gorm.DB, permission string) error {
+	return middleware.RequireSystemPermission(ctx, db, permission)
+}
+
+// Helper function to check tenant permissions  
+func requireTenantPermission(ctx context.Context, db *gorm.DB, permission string, tenantID uuid.UUID) error {
+	return middleware.RequireTenantPermission(ctx, db, permission, tenantID)
 }
