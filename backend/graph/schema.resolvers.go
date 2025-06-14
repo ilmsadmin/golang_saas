@@ -8,11 +8,18 @@ import (
 	"context"
 	"fmt"
 	"golang_saas/graph/model"
+	"golang_saas/middleware"
 	"golang_saas/models"
 	"golang_saas/services"
 	
 	"github.com/google/uuid"
 )
+
+// Helper function to create int32 pointer
+func intPtr(i int) *int32 {
+	val := int32(i)
+	return &val
+}
 
 // Register is the resolver for the register field.
 func (r *mutationResolver) Register(ctx context.Context, input model.RegisterInput) (*model.AuthPayload, error) {
@@ -38,17 +45,83 @@ func (r *mutationResolver) Logout(ctx context.Context) (bool, error) {
 
 // CreateTenant is the resolver for the createTenant field.
 func (r *mutationResolver) CreateTenant(ctx context.Context, input model.CreateTenantInput) (*models.Tenant, error) {
-	panic(fmt.Errorf("not implemented: CreateTenant - createTenant"))
+	// Check system permissions
+	_, err := middleware.RequireAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if user has permission to create tenants
+	if err := middleware.RequireSystemPermission(ctx, r.DB, "tenant.create"); err != nil {
+		return nil, err
+	}
+
+	// Create tenant service and create tenant
+	tenantService := services.NewTenantService(r.DB)
+	return tenantService.CreateTenant(ctx, input)
 }
 
 // UpdateTenant is the resolver for the updateTenant field.
 func (r *mutationResolver) UpdateTenant(ctx context.Context, id string, input model.UpdateTenantInput) (*models.Tenant, error) {
-	panic(fmt.Errorf("not implemented: UpdateTenant - updateTenant"))
+	// Check authentication
+	user, err := middleware.RequireAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse tenant ID
+	tenantID, err := uuid.Parse(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid tenant ID")
+	}
+
+	// Check permissions - either system permission or tenant access
+	// System users can update any tenant
+	if user.TenantID == nil {
+		if err := middleware.RequireSystemPermission(ctx, r.DB, "tenant.update"); err != nil {
+			return nil, err
+		}
+	} else {
+		// Tenant users can only update their own tenant
+		if *user.TenantID != tenantID {
+			return nil, fmt.Errorf("access denied: cannot update other tenants")
+		}
+		if err := middleware.RequireTenantPermission(ctx, r.DB, "tenant.update", tenantID); err != nil {
+			return nil, err
+		}
+	}
+
+	// Update tenant
+	tenantService := services.NewTenantService(r.DB)
+	return tenantService.UpdateTenant(ctx, tenantID, input)
 }
 
 // DeleteTenant is the resolver for the deleteTenant field.
 func (r *mutationResolver) DeleteTenant(ctx context.Context, id string) (bool, error) {
-	panic(fmt.Errorf("not implemented: DeleteTenant - deleteTenant"))
+	// Check authentication
+	_, err := middleware.RequireAuth(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	// Parse tenant ID
+	tenantID, err := uuid.Parse(id)
+	if err != nil {
+		return false, fmt.Errorf("invalid tenant ID")
+	}
+
+	// Check system permissions (only system admins can delete tenants)
+	if err := middleware.RequireSystemPermission(ctx, r.DB, "tenant.delete"); err != nil {
+		return false, err
+	}
+
+	// Delete tenant
+	tenantService := services.NewTenantService(r.DB)
+	if err := tenantService.DeleteTenant(ctx, tenantID); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 // CreateUser is the resolver for the createUser field.
@@ -194,17 +267,100 @@ func (r *queryResolver) User(ctx context.Context, id string) (*models.User, erro
 
 // Tenants is the resolver for the tenants field.
 func (r *queryResolver) Tenants(ctx context.Context, filter *model.TenantFilter, pagination *model.PaginationInput) (*model.PaginatedTenants, error) {
-	panic(fmt.Errorf("not implemented: Tenants - tenants"))
+	// Check authentication
+	_, err := middleware.RequireAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check system permissions (only system admins can list all tenants)
+	if err := middleware.RequireSystemPermission(ctx, r.DB, "tenant.list"); err != nil {
+		return nil, err
+	}
+
+	// Set defaults
+	if pagination == nil {
+		pagination = &model.PaginationInput{
+			Page:  intPtr(1),
+			Limit: intPtr(10),
+		}
+	}
+	if filter == nil {
+		filter = &model.TenantFilter{}
+	}
+
+	// List tenants
+	tenantService := services.NewTenantService(r.DB)
+	return tenantService.ListTenants(ctx, *filter, *pagination)
 }
 
 // Tenant is the resolver for the tenant field.
 func (r *queryResolver) Tenant(ctx context.Context, id string) (*models.Tenant, error) {
-	panic(fmt.Errorf("not implemented: Tenant - tenant"))
+	// Check authentication
+	user, err := middleware.RequireAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse tenant ID
+	tenantID, err := uuid.Parse(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid tenant ID")
+	}
+
+	// Check permissions
+	// System users can access any tenant
+	if user.TenantID == nil {
+		if err := middleware.RequireSystemPermission(ctx, r.DB, "tenant.read"); err != nil {
+			return nil, err
+		}
+	} else {
+		// Tenant users can only access their own tenant
+		if *user.TenantID != tenantID {
+			return nil, fmt.Errorf("access denied: cannot access other tenants")
+		}
+		if err := middleware.RequireTenantPermission(ctx, r.DB, "tenant.read", tenantID); err != nil {
+			return nil, err
+		}
+	}
+
+	// Get tenant
+	tenantService := services.NewTenantService(r.DB)
+	return tenantService.GetTenant(ctx, tenantID)
 }
 
 // TenantBySlug is the resolver for the tenantBySlug field.
 func (r *queryResolver) TenantBySlug(ctx context.Context, slug string) (*models.Tenant, error) {
-	panic(fmt.Errorf("not implemented: TenantBySlug - tenantBySlug"))
+	// Check authentication
+	user, err := middleware.RequireAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get tenant by slug
+	tenantService := services.NewTenantService(r.DB)
+	tenant, err := tenantService.GetTenantBySlug(ctx, slug)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check permissions
+	// System users can access any tenant
+	if user.TenantID == nil {
+		if err := middleware.RequireSystemPermission(ctx, r.DB, "tenant.read"); err != nil {
+			return nil, err
+		}
+	} else {
+		// Tenant users can only access their own tenant
+		if *user.TenantID != tenant.ID {
+			return nil, fmt.Errorf("access denied: cannot access other tenants")
+		}
+		if err := middleware.RequireTenantPermission(ctx, r.DB, "tenant.read", tenant.ID); err != nil {
+			return nil, err
+		}
+	}
+
+	return tenant, nil
 }
 
 // Roles is the resolver for the roles field.

@@ -149,3 +149,42 @@ const (
 	UserRoleTenantUser  UserRole = "TENANT_USER"
 	UserRoleCustomer    UserRole = "CUSTOMER"
 )
+
+// Input/Output types for services
+type CreateTenantInput struct {
+	Name           string                 `json:"name"`
+	Slug           string                 `json:"slug"`
+	Domain         *string                `json:"domain,omitempty"`
+	Subdomain      string                 `json:"subdomain"`
+	AdminEmail     string                 `json:"adminEmail"`
+	AdminPassword  string                 `json:"adminPassword"`
+	AdminFirstName string                 `json:"adminFirstName"`
+	AdminLastName  string                 `json:"adminLastName"`
+	PlanID         string                 `json:"planId"`
+	Settings       datatypes.JSON         `json:"settings,omitempty"`
+}
+
+type UpdateTenantInput struct {
+	Name     *string        `json:"name,omitempty"`
+	Domain   *string        `json:"domain,omitempty"`
+	Status   *TenantStatus  `json:"status,omitempty"`
+	Settings *datatypes.JSON `json:"settings,omitempty"`
+}
+
+type TenantFilter struct {
+	Status *TenantStatus `json:"status,omitempty"`
+	Name   *string       `json:"name,omitempty"`
+}
+
+type PaginationInput struct {
+	Page  int `json:"page"`
+	Limit int `json:"limit"`
+}
+
+type PaginatedTenants struct {
+	Tenants    []Tenant `json:"tenants"`
+	Total      int      `json:"total"`
+	Page       int      `json:"page"`
+	Limit      int      `json:"limit"`
+	TotalPages int      `json:"totalPages"`
+}

@@ -63,3 +63,8 @@ playwright-report/
 *.dll
 *.so
 *.dylib
+
+# Go binary outputs
+golang_saas
+backend/golang_saas
+main
