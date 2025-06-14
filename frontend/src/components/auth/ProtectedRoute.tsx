@@ -12,6 +12,7 @@ interface ProtectedRouteProps {
     action: string;
   };
   redirectTo?: string;
+  fallback?: ReactNode;
 }
 
 export function ProtectedRoute({
@@ -19,8 +20,9 @@ export function ProtectedRoute({
   requiredRole,
   requiredPermission,
   redirectTo = '/auth/signin',
+  fallback,
 }: ProtectedRouteProps) {
-  const { isAuthenticated, storedUser, isLoading } = useAuth();
+  const { isAuthenticated, storedUser, isLoading, hasRole, hasPermission } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -32,30 +34,30 @@ export function ProtectedRoute({
     }
 
     // Check role requirement
-    if (requiredRole) {
-      const roles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
-      if (!roles.includes(storedUser.role.name)) {
-        router.push('/unauthorized');
-        return;
-      }
+    if (requiredRole && !hasRole(requiredRole)) {
+      router.push('/unauthorized');
+      return;
     }
 
     // Check permission requirement
     if (requiredPermission) {
-      const hasPermission = checkPermission(
-        storedUser.permissions || [],
+      const hasRequiredPermission = hasPermission(
         requiredPermission.resource,
         requiredPermission.action
       );
       
-      if (!hasPermission) {
+      if (!hasRequiredPermission) {
         router.push('/unauthorized');
         return;
       }
     }
-  }, [isAuthenticated, storedUser, isLoading, router, requiredRole, requiredPermission, redirectTo]);
+  }, [isAuthenticated, storedUser, isLoading, router, requiredRole, requiredPermission, redirectTo, hasRole, hasPermission]);
 
   if (isLoading) {
+    if (fallback) {
+      return <>{fallback}</>;
+    }
+    
     return (
       <div className="flex h-screen items-center justify-center">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
@@ -64,6 +66,16 @@ export function ProtectedRoute({
   }
 
   if (!isAuthenticated || !storedUser) {
+    return null;
+  }
+
+  // Check role requirement
+  if (requiredRole && !hasRole(requiredRole)) {
+    return null;
+  }
+
+  // Check permission requirement
+  if (requiredPermission && !hasPermission(requiredPermission.resource, requiredPermission.action)) {
     return null;
   }
 
