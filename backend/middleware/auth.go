@@ -64,6 +64,7 @@ func AuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 		// Store user and claims in context
 		ctx := context.WithValue(c.Request.Context(), UserContextKey, &user)
 		ctx = context.WithValue(ctx, ClaimsContextKey, claims)
+		ctx = context.WithValue(ctx, "userID", claims.UserID)
 		c.Request = c.Request.WithContext(ctx)
 
 		c.Next()
