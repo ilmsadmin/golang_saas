@@ -459,7 +459,7 @@ func (r *permissionResolver) ID(ctx context.Context, obj *models.Permission) (st
 
 // Scope is the resolver for the scope field.
 func (r *permissionResolver) Scope(ctx context.Context, obj *models.Permission) (model.PermissionScope, error) {
-	if obj.IsSystem {
+	if obj.IsSystemPermission {
 		return model.PermissionScopeSystem, nil
 	}
 	return model.PermissionScopeTenant, nil
@@ -720,7 +720,11 @@ func (r *roleResolver) TenantID(ctx context.Context, obj *models.Role) (*string,
 
 // UsersCount is the resolver for the usersCount field.
 func (r *roleResolver) UsersCount(ctx context.Context, obj *models.Role) (int32, error) {
-	panic(fmt.Errorf("not implemented: UsersCount - usersCount"))
+	var count int64
+	if err := r.DB.Model(&models.User{}).Where("role_id = ?", obj.ID).Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return int32(count), nil
 }
 
 // ID is the resolver for the id field.
