@@ -4,12 +4,14 @@ import type {
   TenantUser, 
   Customer,
   Role,
+  Permission,
   TenantSettings,
   DashboardStats,
   PaginatedResponse,
   ApiResponse,
   CreateUserRequest,
-  UpdateUserRequest
+  UpdateUserRequest,
+  Module
 } from '@/types';
 
 interface UserFilters extends Record<string, unknown> {
@@ -54,7 +56,7 @@ export function useUpdateTenantUser() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: ({ id, ...data }: UpdateUserRequest & { id: number }) =>
+    mutationFn: ({ id, data }: { id: number; data: UpdateUserRequest }) =>
       apiClient.mutate<ApiResponse<TenantUser>>('updateUser', { id, input: data }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['tenant', 'users'] });
@@ -93,11 +95,23 @@ export function useTenantCustomer(id: number) {
   });
 }
 
+export function useCreateTenantCustomer() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (data: any) => 
+      apiClient.mutate<ApiResponse<Customer>>('createCustomer', { input: data }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant', 'customers'] });
+    },
+  });
+}
+
 export function useUpdateTenantCustomer() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: ({ id, ...data }: UpdateUserRequest & { id: number }) =>
+    mutationFn: ({ id, data }: { id: number; data: any }) =>
       apiClient.mutate<ApiResponse<Customer>>('updateCustomer', { id, input: data }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['tenant', 'customers'] });
@@ -106,12 +120,90 @@ export function useUpdateTenantCustomer() {
   });
 }
 
+export function useDeleteTenantCustomer() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (id: number) => 
+      apiClient.mutate<ApiResponse<void>>('deleteCustomer', { id }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant', 'customers'] });
+    },
+  });
+}
+
 // Roles management
-export function useTenantRoles() {
+export function useTenantRoles(filters: any = {}) {
   return useQuery({
-    queryKey: ['tenant', 'roles'],
-    queryFn: () => apiClient.query<ApiResponse<Role[]>>('getRoles'),
+    queryKey: ['tenant', 'roles', filters],
+    queryFn: () => apiClient.query<ApiResponse<PaginatedResponse<Role>>>('getRoles', filters),
     select: (data) => data.data,
+  });
+}
+
+export function useTenantPermissions() {
+  return useQuery({
+    queryKey: ['tenant', 'permissions'],
+    queryFn: () => apiClient.query<ApiResponse<Permission[]>>('getPermissions'),
+    select: (data) => data.data,
+  });
+}
+
+export function useCreateTenantRole() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (data: any) => 
+      apiClient.mutate<ApiResponse<Role>>('createRole', { input: data }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant', 'roles'] });
+    },
+  });
+}
+
+export function useUpdateTenantRole() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) =>
+      apiClient.mutate<ApiResponse<Role>>('updateRole', { id, input: data }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['tenant', 'roles'] });
+      queryClient.invalidateQueries({ queryKey: ['tenant', 'roles', variables.id] });
+    },
+  });
+}
+
+export function useDeleteTenantRole() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (id: number) => 
+      apiClient.mutate<ApiResponse<void>>('deleteRole', { id }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant', 'roles'] });
+    },
+  });
+}
+
+// Modules management
+export function useTenantModules() {
+  return useQuery({
+    queryKey: ['tenant', 'modules'],
+    queryFn: () => apiClient.query<ApiResponse<Module[]>>('getModules'),
+    select: (data) => data.data,
+  });
+}
+
+export function useUpdateTenantModules() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (data: any) => 
+      apiClient.mutate<ApiResponse<void>>('updateModules', { input: data }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant', 'modules'] });
+    },
   });
 }
 
