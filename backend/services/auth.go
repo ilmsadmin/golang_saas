@@ -1,9 +1,10 @@
 package services
 
 import (
+	"context"
 	"errors"
 
-	"golang_saas/config"
+	"golang_saas/graph/model"
 	"golang_saas/models"
 	"golang_saas/utils"
 
@@ -15,9 +16,9 @@ type AuthService struct {
 	db *gorm.DB
 }
 
-func NewAuthService() *AuthService {
+func NewAuthService(db *gorm.DB) *AuthService {
 	return &AuthService{
-		db: config.DB,
+		db: db,
 	}
 }
 
@@ -41,7 +42,7 @@ type AuthResponse struct {
 	Permissions  []string     `json:"permissions"`
 }
 
-func (s *AuthService) Login(req LoginRequest, tenantID *uuid.UUID) (*AuthResponse, error) {
+func (s *AuthService) login(req LoginRequest, tenantID *uuid.UUID) (*AuthResponse, error) {
 	var user models.User
 
 	query := s.db.Preload("Role").Preload("Role.Permissions").Preload("Permissions").Where("email = ? AND is_active = ?", req.Email, true)
@@ -100,7 +101,7 @@ func (s *AuthService) Login(req LoginRequest, tenantID *uuid.UUID) (*AuthRespons
 	}, nil
 }
 
-func (s *AuthService) Register(req RegisterRequest) (*AuthResponse, error) {
+func (s *AuthService) register(req RegisterRequest) (*AuthResponse, error) {
 	// Check if user exists
 	var existingUser models.User
 	err := s.db.Where("email = ?", req.Email).First(&existingUser).Error
@@ -218,5 +219,81 @@ func (s *AuthService) RefreshToken(refreshToken string) (*AuthResponse, error) {
 		RefreshToken: newRefreshToken,
 		User:         &user,
 		Permissions:  claims.Permissions,
+	}, nil
+}
+
+// GraphQL wrapper methods
+func (s *AuthService) Login(ctx context.Context, input model.LoginInput) (*model.AuthPayload, error) {
+	var tenantID *uuid.UUID
+	if input.TenantSlug != nil {
+		// Look up tenant by slug
+		var tenant models.Tenant
+		err := s.db.Where("slug = ?", *input.TenantSlug).First(&tenant).Error
+		if err != nil {
+			return nil, errors.New("tenant not found")
+		}
+		tenantID = &tenant.ID
+	}
+
+	loginReq := LoginRequest{
+		Email:    input.Email,
+		Password: input.Password,
+	}
+
+	authResp, err := s.login(loginReq, tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	var tenant *models.Tenant
+	if authResp.User.TenantID != nil {
+		tenant = authResp.User.Tenant
+	}
+
+	return &model.AuthPayload{
+		Token:        authResp.Token,
+		RefreshToken: authResp.RefreshToken,
+		User:         authResp.User,
+		Tenant:       tenant,
+		Permissions:  authResp.Permissions,
+	}, nil
+}
+
+func (s *AuthService) Register(ctx context.Context, input model.RegisterInput) (*model.AuthPayload, error) {
+	var tenantID *uuid.UUID
+	if input.TenantSlug != nil {
+		// Look up tenant by slug
+		var tenant models.Tenant
+		err := s.db.Where("slug = ?", *input.TenantSlug).First(&tenant).Error
+		if err != nil {
+			return nil, errors.New("tenant not found")
+		}
+		tenantID = &tenant.ID
+	}
+
+	registerReq := RegisterRequest{
+		Email:     input.Email,
+		Password:  input.Password,
+		FirstName: input.FirstName,
+		LastName:  input.LastName,
+		TenantID:  tenantID,
+	}
+
+	authResp, err := s.register(registerReq)
+	if err != nil {
+		return nil, err
+	}
+
+	var tenant *models.Tenant
+	if authResp.User.TenantID != nil {
+		tenant = authResp.User.Tenant
+	}
+
+	return &model.AuthPayload{
+		Token:        authResp.Token,
+		RefreshToken: authResp.RefreshToken,
+		User:         authResp.User,
+		Tenant:       tenant,
+		Permissions:  authResp.Permissions,
 	}, nil
 }

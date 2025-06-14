@@ -6,24 +6,27 @@ package graph
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"golang_saas/graph/model"
+	"golang_saas/middleware"
 	"golang_saas/models"
 	"golang_saas/services"
 	
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // Register is the resolver for the register field.
 func (r *mutationResolver) Register(ctx context.Context, input model.RegisterInput) (*model.AuthPayload, error) {
-	// For now, just return a simple implementation
-	return nil, fmt.Errorf("register functionality not implemented yet")
+	authService := services.NewAuthService(r.DB)
+	return authService.Register(ctx, input)
 }
 
 // Login is the resolver for the login field.
 func (r *mutationResolver) Login(ctx context.Context, input model.LoginInput) (*model.AuthPayload, error) {
-	// For now, just return a simple implementation
-	return nil, fmt.Errorf("login functionality not implemented yet")
+	authService := services.NewAuthService(r.DB)
+	return authService.Login(ctx, input)
 }
 
 // RefreshToken is the resolver for the refreshToken field.
@@ -38,32 +41,120 @@ func (r *mutationResolver) Logout(ctx context.Context) (bool, error) {
 
 // CreateTenant is the resolver for the createTenant field.
 func (r *mutationResolver) CreateTenant(ctx context.Context, input model.CreateTenantInput) (*models.Tenant, error) {
-	panic(fmt.Errorf("not implemented: CreateTenant - createTenant"))
+	// Check system admin permissions
+	if err := requireSystemPermission(ctx, r.DB, "tenant.create"); err != nil {
+		return nil, err
+	}
+
+	tenantService := services.NewTenantService(r.DB)
+	return tenantService.CreateTenant(ctx, input)
 }
 
 // UpdateTenant is the resolver for the updateTenant field.
 func (r *mutationResolver) UpdateTenant(ctx context.Context, id string, input model.UpdateTenantInput) (*models.Tenant, error) {
-	panic(fmt.Errorf("not implemented: UpdateTenant - updateTenant"))
+	if err := requireSystemPermission(ctx, r.DB, "tenant.update"); err != nil {
+		return nil, err
+	}
+
+	tenantService := services.NewTenantService(r.DB)
+	return tenantService.UpdateTenant(ctx, id, input)
 }
 
 // DeleteTenant is the resolver for the deleteTenant field.
 func (r *mutationResolver) DeleteTenant(ctx context.Context, id string) (bool, error) {
-	panic(fmt.Errorf("not implemented: DeleteTenant - deleteTenant"))
+	if err := requireSystemPermission(ctx, r.DB, "tenant.delete"); err != nil {
+		return false, err
+	}
+
+	tenantService := services.NewTenantService(r.DB)
+	return tenantService.DeleteTenant(ctx, id)
 }
 
 // CreateUser is the resolver for the createUser field.
 func (r *mutationResolver) CreateUser(ctx context.Context, input model.CreateUserInput) (*models.User, error) {
-	panic(fmt.Errorf("not implemented: CreateUser - createUser"))
+	// Check permissions based on role being assigned
+	roleUUID, err := uuid.Parse(input.RoleID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid role ID: %v", err)
+	}
+
+	var role models.Role
+	err = r.DB.First(&role, "id = ?", roleUUID).Error
+	if err != nil {
+		return nil, errors.New("role not found")
+	}
+
+	// Check appropriate permissions
+	if role.TenantID != nil {
+		if err := requireTenantPermission(ctx, r.DB, "tenant_user.create", *role.TenantID); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := requireSystemPermission(ctx, r.DB, "system_user.create"); err != nil {
+			return nil, err
+		}
+	}
+
+	userService := services.NewUserService(r.DB)
+	return userService.CreateUser(ctx, input)
 }
 
 // UpdateUser is the resolver for the updateUser field.
 func (r *mutationResolver) UpdateUser(ctx context.Context, id string, input model.UpdateUserInput) (*models.User, error) {
-	panic(fmt.Errorf("not implemented: UpdateUser - updateUser"))
+	// Check if user exists and get their tenant for permission checking
+	userUUID, err := uuid.Parse(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %v", err)
+	}
+
+	var existingUser models.User
+	err = r.DB.Preload("Role").First(&existingUser, "id = ?", userUUID).Error
+	if err != nil {
+		return nil, errors.New("user not found")
+	}
+
+	// Check appropriate permissions
+	if existingUser.TenantID != nil {
+		if err := requireTenantPermission(ctx, r.DB, "tenant_user.update", *existingUser.TenantID); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := requireSystemPermission(ctx, r.DB, "system_user.update"); err != nil {
+			return nil, err
+		}
+	}
+
+	userService := services.NewUserService(r.DB)
+	return userService.UpdateUser(ctx, id, input)
 }
 
 // DeleteUser is the resolver for the deleteUser field.
 func (r *mutationResolver) DeleteUser(ctx context.Context, id string) (bool, error) {
-	panic(fmt.Errorf("not implemented: DeleteUser - deleteUser"))
+	// Check if user exists and get their tenant for permission checking
+	userUUID, err := uuid.Parse(id)
+	if err != nil {
+		return false, fmt.Errorf("invalid user ID: %v", err)
+	}
+
+	var existingUser models.User
+	err = r.DB.First(&existingUser, "id = ?", userUUID).Error
+	if err != nil {
+		return false, errors.New("user not found")
+	}
+
+	// Check appropriate permissions
+	if existingUser.TenantID != nil {
+		if err := requireTenantPermission(ctx, r.DB, "tenant_user.delete", *existingUser.TenantID); err != nil {
+			return false, err
+		}
+	} else {
+		if err := requireSystemPermission(ctx, r.DB, "system_user.delete"); err != nil {
+			return false, err
+		}
+	}
+
+	userService := services.NewUserService(r.DB)
+	return userService.DeleteUser(ctx, id)
 }
 
 // CreateRole is the resolver for the createRole field.
@@ -83,32 +174,147 @@ func (r *mutationResolver) DeleteRole(ctx context.Context, id string) (bool, err
 
 // AssignRole is the resolver for the assignRole field.
 func (r *mutationResolver) AssignRole(ctx context.Context, input model.AssignRoleInput) (*models.User, error) {
-	panic(fmt.Errorf("not implemented: AssignRole - assignRole"))
+	// Check if user exists and get their tenant for permission checking
+	userUUID, err := uuid.Parse(input.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %v", err)
+	}
+
+	var existingUser models.User
+	err = r.DB.First(&existingUser, "id = ?", userUUID).Error
+	if err != nil {
+		return nil, errors.New("user not found")
+	}
+
+	// Check appropriate permissions
+	if existingUser.TenantID != nil {
+		if err := requireTenantPermission(ctx, r.DB, "tenant_role.update", *existingUser.TenantID); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := requireSystemPermission(ctx, r.DB, "system_role.update"); err != nil {
+			return nil, err
+		}
+	}
+
+	userService := services.NewUserService(r.DB)
+	return userService.AssignRole(ctx, input)
 }
 
 // AssignPermissions is the resolver for the assignPermissions field.
 func (r *mutationResolver) AssignPermissions(ctx context.Context, input model.AssignPermissionInput) (*models.User, error) {
-	panic(fmt.Errorf("not implemented: AssignPermissions - assignPermissions"))
+	// Check if user exists and get their tenant for permission checking
+	userUUID, err := uuid.Parse(input.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %v", err)
+	}
+
+	var existingUser models.User
+	err = r.DB.First(&existingUser, "id = ?", userUUID).Error
+	if err != nil {
+		return nil, errors.New("user not found")
+	}
+
+	// Check appropriate permissions (need admin level for direct permission assignment)
+	if existingUser.TenantID != nil {
+		if err := requireTenantPermission(ctx, r.DB, "tenant_role.update", *existingUser.TenantID); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := requireSystemPermission(ctx, r.DB, "system_role.update"); err != nil {
+			return nil, err
+		}
+	}
+
+	userService := services.NewUserService(r.DB)
+	return userService.AssignPermissions(ctx, input)
 }
 
 // RevokePermissions is the resolver for the revokePermissions field.
 func (r *mutationResolver) RevokePermissions(ctx context.Context, input model.AssignPermissionInput) (*models.User, error) {
-	panic(fmt.Errorf("not implemented: RevokePermissions - revokePermissions"))
+	// Check if user exists and get their tenant for permission checking
+	userUUID, err := uuid.Parse(input.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %v", err)
+	}
+
+	var existingUser models.User
+	err = r.DB.First(&existingUser, "id = ?", userUUID).Error
+	if err != nil {
+		return nil, errors.New("user not found")
+	}
+
+	// Check appropriate permissions (need admin level for direct permission management)
+	if existingUser.TenantID != nil {
+		if err := requireTenantPermission(ctx, r.DB, "tenant_role.update", *existingUser.TenantID); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := requireSystemPermission(ctx, r.DB, "system_role.update"); err != nil {
+			return nil, err
+		}
+	}
+
+	userService := services.NewUserService(r.DB)
+	return userService.RevokePermissions(ctx, input)
 }
 
 // CreateCustomer is the resolver for the createCustomer field.
 func (r *mutationResolver) CreateCustomer(ctx context.Context, input model.CreateCustomerInput) (*model.CustomerProfile, error) {
-	panic(fmt.Errorf("not implemented: CreateCustomer - createCustomer"))
+	// Check tenant permissions
+	tenantUUID, err := uuid.Parse(input.TenantID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid tenant ID: %v", err)
+	}
+
+	if err := requireTenantPermission(ctx, r.DB, "customer.create", tenantUUID); err != nil {
+		return nil, err
+	}
+
+	customerService := services.NewCustomerService(r.DB)
+	customer, err := customerService.CreateCustomer(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	return customerService.ConvertToGraphQLModel(customer), nil
 }
 
 // UpdateCustomer is the resolver for the updateCustomer field.
 func (r *mutationResolver) UpdateCustomer(ctx context.Context, id string, input model.UpdateCustomerInput) (*model.CustomerProfile, error) {
-	panic(fmt.Errorf("not implemented: UpdateCustomer - updateCustomer"))
+	// Get customer to check tenant permissions
+	customerService := services.NewCustomerService(r.DB)
+	existingCustomer, err := customerService.GetCustomer(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := requireTenantPermission(ctx, r.DB, "customer.update", existingCustomer.TenantID); err != nil {
+		return nil, err
+	}
+
+	customer, err := customerService.UpdateCustomer(ctx, id, input)
+	if err != nil {
+		return nil, err
+	}
+
+	return customerService.ConvertToGraphQLModel(customer), nil
 }
 
 // DeleteCustomer is the resolver for the deleteCustomer field.
 func (r *mutationResolver) DeleteCustomer(ctx context.Context, id string) (bool, error) {
-	panic(fmt.Errorf("not implemented: DeleteCustomer - deleteCustomer"))
+	// Get customer to check tenant permissions
+	customerService := services.NewCustomerService(r.DB)
+	existingCustomer, err := customerService.GetCustomer(ctx, id)
+	if err != nil {
+		return false, err
+	}
+
+	if err := requireTenantPermission(ctx, r.DB, "customer.delete", existingCustomer.TenantID); err != nil {
+		return false, err
+	}
+
+	return customerService.DeleteCustomer(ctx, id)
 }
 
 // InitializeSystemRoles is the resolver for the initializeSystemRoles field.
@@ -148,28 +354,53 @@ func (r *permissionResolver) Scope(ctx context.Context, obj *models.Permission) 
 
 // ID is the resolver for the id field.
 func (r *planResolver) ID(ctx context.Context, obj *models.Plan) (string, error) {
-	panic(fmt.Errorf("not implemented: ID - id"))
+	if obj == nil {
+		return "", fmt.Errorf("plan object is nil")
+	}
+	return obj.ID.String(), nil
 }
 
 // Features is the resolver for the features field.
 func (r *planResolver) Features(ctx context.Context, obj *models.Plan) (map[string]any, error) {
-	panic(fmt.Errorf("not implemented: Features - features"))
+	var features map[string]any
+	if obj.Features != nil {
+		if err := obj.Features.Unmarshal(&features); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal features: %v", err)
+		}
+	}
+	return features, nil
 }
 
 // MaxUsers is the resolver for the maxUsers field.
 func (r *planResolver) MaxUsers(ctx context.Context, obj *models.Plan) (int32, error) {
-	panic(fmt.Errorf("not implemented: MaxUsers - maxUsers"))
+	return int32(obj.MaxUsers), nil
 }
 
 // Me is the resolver for the me field.
 func (r *queryResolver) Me(ctx context.Context) (*models.User, error) {
-	panic(fmt.Errorf("not implemented: Me - me"))
+	userService := services.NewUserService(r.DB)
+	return userService.GetCurrentUser(ctx)
 }
 
 // MyPermissions is the resolver for the myPermissions field.
 func (r *queryResolver) MyPermissions(ctx context.Context) ([]string, error) {
-	// For now, return empty array
-	return []string{}, nil
+	userID := ctx.Value("userID")
+	if userID == nil {
+		return []string{}, nil
+	}
+
+	userUUIDStr, ok := userID.(string)
+	if !ok {
+		return []string{}, nil
+	}
+
+	userService := services.NewUserService(r.DB)
+	permissions, err := userService.GetUserPermissions(ctx, userUUIDStr)
+	if err != nil {
+		return []string{}, nil
+	}
+
+	return permissions, nil
 }
 
 // CheckPermission is the resolver for the checkPermission field.
@@ -184,27 +415,79 @@ func (r *queryResolver) CheckPermission(ctx context.Context, input model.Permiss
 
 // Users is the resolver for the users field.
 func (r *queryResolver) Users(ctx context.Context, filter *model.UserFilter, pagination *model.PaginationInput) (*model.PaginatedUsers, error) {
-	panic(fmt.Errorf("not implemented: Users - users"))
+	// Determine appropriate permission checking based on filter
+	if filter != nil && filter.TenantID != nil {
+		tenantUUID, err := uuid.Parse(*filter.TenantID)
+		if err != nil {
+			return nil, fmt.Errorf("invalid tenant ID: %v", err)
+		}
+		if err := requireTenantPermission(ctx, r.DB, "tenant_user.list", tenantUUID); err != nil {
+			return nil, err
+		}
+	} else {
+		// For system-wide user listing, need system permission
+		if err := requireSystemPermission(ctx, r.DB, "system_user.list"); err != nil {
+			return nil, err
+		}
+	}
+
+	userService := services.NewUserService(r.DB)
+	return userService.ListUsers(ctx, filter, pagination)
 }
 
 // User is the resolver for the user field.
 func (r *queryResolver) User(ctx context.Context, id string) (*models.User, error) {
-	panic(fmt.Errorf("not implemented: User - user"))
+	// Check if user exists first to determine permission level needed
+	userUUID, err := uuid.Parse(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %v", err)
+	}
+
+	var user models.User
+	err = r.DB.First(&user, "id = ?", userUUID).Error
+	if err != nil {
+		return nil, errors.New("user not found")
+	}
+
+	// Check appropriate permissions
+	if user.TenantID != nil {
+		if err := requireTenantPermission(ctx, r.DB, "tenant_user.read", *user.TenantID); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := requireSystemPermission(ctx, r.DB, "system_user.read"); err != nil {
+			return nil, err
+		}
+	}
+
+	userService := services.NewUserService(r.DB)
+	return userService.GetUser(ctx, id)
 }
 
 // Tenants is the resolver for the tenants field.
 func (r *queryResolver) Tenants(ctx context.Context, filter *model.TenantFilter, pagination *model.PaginationInput) (*model.PaginatedTenants, error) {
-	panic(fmt.Errorf("not implemented: Tenants - tenants"))
+	if err := requireSystemPermission(ctx, r.DB, "tenant.list"); err != nil {
+		return nil, err
+	}
+
+	tenantService := services.NewTenantService(r.DB)
+	return tenantService.ListTenants(ctx, filter, pagination)
 }
 
 // Tenant is the resolver for the tenant field.
 func (r *queryResolver) Tenant(ctx context.Context, id string) (*models.Tenant, error) {
-	panic(fmt.Errorf("not implemented: Tenant - tenant"))
+	if err := requireSystemPermission(ctx, r.DB, "tenant.read"); err != nil {
+		return nil, err
+	}
+
+	tenantService := services.NewTenantService(r.DB)
+	return tenantService.GetTenant(ctx, id)
 }
 
 // TenantBySlug is the resolver for the tenantBySlug field.
 func (r *queryResolver) TenantBySlug(ctx context.Context, slug string) (*models.Tenant, error) {
-	panic(fmt.Errorf("not implemented: TenantBySlug - tenantBySlug"))
+	tenantService := services.NewTenantService(r.DB)
+	return tenantService.GetTenantBySlug(ctx, slug)
 }
 
 // Roles is the resolver for the roles field.
@@ -234,17 +517,57 @@ func (r *queryResolver) RolePermissionMatrix(ctx context.Context) ([]*model.Role
 
 // Customers is the resolver for the customers field.
 func (r *queryResolver) Customers(ctx context.Context, filter *model.UserFilter, pagination *model.PaginationInput) (*model.PaginatedCustomers, error) {
-	panic(fmt.Errorf("not implemented: Customers - customers"))
+	// Check permissions based on filter
+	if filter != nil && filter.TenantID != nil {
+		tenantUUID, err := uuid.Parse(*filter.TenantID)
+		if err != nil {
+			return nil, fmt.Errorf("invalid tenant ID: %v", err)
+		}
+		if err := requireTenantPermission(ctx, r.DB, "customer.list", tenantUUID); err != nil {
+			return nil, err
+		}
+	} else {
+		// For system-wide customer listing, need system permission
+		if err := requireSystemPermission(ctx, r.DB, "system_user.list"); err != nil {
+			return nil, err
+		}
+	}
+
+	customerService := services.NewCustomerService(r.DB)
+	return customerService.ListCustomers(ctx, filter, pagination)
 }
 
 // Customer is the resolver for the customer field.
 func (r *queryResolver) Customer(ctx context.Context, id string) (*model.CustomerProfile, error) {
-	panic(fmt.Errorf("not implemented: Customer - customer"))
+	// Get customer to check tenant permissions
+	customerService := services.NewCustomerService(r.DB)
+	existingCustomer, err := customerService.GetCustomer(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := requireTenantPermission(ctx, r.DB, "customer.read", existingCustomer.TenantID); err != nil {
+		return nil, err
+	}
+
+	return customerService.ConvertToGraphQLModel(existingCustomer), nil
 }
 
 // Plans is the resolver for the plans field.
 func (r *queryResolver) Plans(ctx context.Context) ([]*models.Plan, error) {
-	panic(fmt.Errorf("not implemented: Plans - plans"))
+	var plans []models.Plan
+	err := r.DB.Find(&plans).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to load plans: %v", err)
+	}
+
+	// Convert to pointers
+	var planPtrs []*models.Plan
+	for i := range plans {
+		planPtrs = append(planPtrs, &plans[i])
+	}
+
+	return planPtrs, nil
 }
 
 // Plan is the resolver for the plan field.
@@ -259,7 +582,7 @@ func (r *queryResolver) SystemSettings(ctx context.Context) ([]*models.SystemSet
 
 // ID is the resolver for the id field.
 func (r *roleResolver) ID(ctx context.Context, obj *models.Role) (string, error) {
-	panic(fmt.Errorf("not implemented: ID - id"))
+	return obj.ID.String(), nil
 }
 
 // TenantID is the resolver for the tenantId field.
@@ -284,7 +607,7 @@ func (r *systemSettingsResolver) Value(ctx context.Context, obj *models.SystemSe
 
 // ID is the resolver for the id field.
 func (r *tenantResolver) ID(ctx context.Context, obj *models.Tenant) (string, error) {
-	panic(fmt.Errorf("not implemented: ID - id"))
+	return obj.ID.String(), nil
 }
 
 // Settings is the resolver for the settings field.
@@ -309,7 +632,7 @@ func (r *tenantSubscriptionResolver) PlanID(ctx context.Context, obj *models.Sub
 
 // ID is the resolver for the id field.
 func (r *userResolver) ID(ctx context.Context, obj *models.User) (string, error) {
-	panic(fmt.Errorf("not implemented: ID - id"))
+	return obj.ID.String(), nil
 }
 
 // TenantID is the resolver for the tenantId field.
@@ -369,4 +692,14 @@ type userResolver struct{ *Resolver }
 // Helper function to create string pointers
 func strPtr(s string) *string {
 	return &s
+}
+
+// Helper function to check system permissions
+func requireSystemPermission(ctx context.Context, db *gorm.DB, permission string) error {
+	return middleware.RequireSystemPermission(ctx, db, permission)
+}
+
+// Helper function to check tenant permissions  
+func requireTenantPermission(ctx context.Context, db *gorm.DB, permission string, tenantID uuid.UUID) error {
+	return middleware.RequireTenantPermission(ctx, db, permission, tenantID)
 }
