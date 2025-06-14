@@ -74,13 +74,18 @@ func InitDatabase() {
 		&models.Subscription{},
 		&models.Plan{},
 		&models.SystemSettings{},
+		&models.SystemUser{},
+		&models.SystemAuditLog{},
 		&models.TenantUser{},
 		&models.TenantSettings{},
 		&models.TenantModule{},
 		&models.Module{},
 		&models.DomainMapping{},
 		&models.AuditLog{},
-		&models.CustomerProfile{}, // Add the missing model
+		&models.UserSession{},
+		&models.Notification{},
+		&models.UserNotification{},
+		&models.CustomerProfile{},
 	)
 	if err != nil {
 		log.Fatal("Failed to auto-migrate models:", err)
@@ -152,21 +157,32 @@ func seedInitialData() {
 	// Create default plans
 	plans := []models.Plan{
 		{
-			Name:        "Starter",
-			Description: StringPtr("Perfect for small teams"),
-			Price:       29.99,
+			Name:         "Starter",
+			Slug:         "starter",
+			Description:  StringPtr("Perfect for small teams"),
+			Price:        29.99,
+			BillingCycle: "monthly",
 			Features: datatypes.JSON([]byte(`{
 				"users": 10,
 				"storage": "5GB",
 				"support": "email",
 				"integrations": 3
 			}`)),
-			MaxUsers: 10,
+			Limits: datatypes.JSON([]byte(`{
+				"api_calls_per_hour": 1000,
+				"storage_gb": 5,
+				"file_uploads_per_day": 100
+			}`)),
+			IsActive:  true,
+			SortOrder: 1,
+			MaxUsers:  10,
 		},
 		{
-			Name:        "Professional",
-			Description: StringPtr("Great for growing businesses"),
-			Price:       99.99,
+			Name:         "Professional",
+			Slug:         "professional",
+			Description:  StringPtr("Great for growing businesses"),
+			Price:        99.99,
+			BillingCycle: "monthly",
 			Features: datatypes.JSON([]byte(`{
 				"users": 100,
 				"storage": "50GB",
@@ -174,12 +190,21 @@ func seedInitialData() {
 				"integrations": 20,
 				"analytics": true
 			}`)),
-			MaxUsers: 100,
+			Limits: datatypes.JSON([]byte(`{
+				"api_calls_per_hour": 10000,
+				"storage_gb": 50,
+				"file_uploads_per_day": 1000
+			}`)),
+			IsActive:  true,
+			SortOrder: 2,
+			MaxUsers:  100,
 		},
 		{
-			Name:        "Enterprise",
-			Description: StringPtr("For large organizations"),
-			Price:       299.99,
+			Name:         "Enterprise",
+			Slug:         "enterprise",
+			Description:  StringPtr("For large organizations"),
+			Price:        299.99,
+			BillingCycle: "monthly",
 			Features: datatypes.JSON([]byte(`{
 				"users": -1,
 				"storage": "500GB",
@@ -189,13 +214,20 @@ func seedInitialData() {
 				"sso": true,
 				"custom_domain": true
 			}`)),
-			MaxUsers: -1, // Unlimited
+			Limits: datatypes.JSON([]byte(`{
+				"api_calls_per_hour": 100000,
+				"storage_gb": 500,
+				"file_uploads_per_day": -1
+			}`)),
+			IsActive:  true,
+			SortOrder: 3,
+			MaxUsers:  -1, // Unlimited
 		},
 	}
 
 	for _, plan := range plans {
 		var existingPlan models.Plan
-		if err := DB.Where("name = ?", plan.Name).First(&existingPlan).Error; err != nil {
+		if err := DB.Where("slug = ?", plan.Slug).First(&existingPlan).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
 				if err := DB.Create(&plan).Error; err != nil {
 					log.Printf("Failed to create plan %s: %v", plan.Name, err)
