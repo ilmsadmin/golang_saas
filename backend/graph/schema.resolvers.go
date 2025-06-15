@@ -6,6 +6,7 @@ package graph
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"golang_saas/graph/model"
@@ -19,13 +20,13 @@ import (
 
 // RefreshToken is the resolver for the refreshToken field.
 func (r *mutationResolver) RefreshToken(ctx context.Context, refreshToken string) (*model.AuthPayload, error) {
-	authService := services.NewAuthService()
-	
+	authService := services.NewAuthService(r.DB)
+
 	authResponse, err := authService.RefreshToken(refreshToken)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Convert to GraphQL response
 	result := &model.AuthPayload{
 		Token:        authResponse.Token,
@@ -33,7 +34,7 @@ func (r *mutationResolver) RefreshToken(ctx context.Context, refreshToken string
 		User:         authResponse.User,
 		Permissions:  authResponse.Permissions,
 	}
-	
+
 	// Add tenant if user has one
 	if authResponse.User.TenantID != nil {
 		var tenant models.Tenant
@@ -41,105 +42,22 @@ func (r *mutationResolver) RefreshToken(ctx context.Context, refreshToken string
 			result.Tenant = &tenant
 		}
 	}
-	
+
 	return result, nil
 }
 
 // Register is the resolver for the register field.
 func (r *mutationResolver) Register(ctx context.Context, input model.RegisterInput) (*model.AuthPayload, error) {
+	authService := services.NewAuthService(r.DB)
 
-	authService := services.NewAuthService()
-	
-	// Convert GraphQL input to service request
-	req := services.RegisterRequest{
-		Email:     input.Email,
-		Password:  input.Password,
-		FirstName: input.FirstName,
-		LastName:  input.LastName,
-	}
-	
-	// Parse tenant slug if provided and get tenant ID
-	if input.TenantSlug != nil {
-		var tenant models.Tenant
-		if err := r.DB.Where("slug = ?", *input.TenantSlug).First(&tenant).Error; err != nil {
-			return nil, fmt.Errorf("tenant not found: %w", err)
-		}
-		req.TenantID = &tenant.ID
-	}
-	
-	authResponse, err := authService.Register(req)
-	if err != nil {
-		return nil, err
-	}
-	
-	// Convert to GraphQL response
-	result := &model.AuthPayload{
-		Token:        authResponse.Token,
-		RefreshToken: authResponse.RefreshToken,
-		User:         authResponse.User,
-		Permissions:  authResponse.Permissions,
-	}
-	
-	// Add tenant if user has one
-	if authResponse.User.TenantID != nil {
-		var tenant models.Tenant
-		if err := r.DB.First(&tenant, "id = ?", *authResponse.User.TenantID).Error; err == nil {
-			result.Tenant = &tenant
-		}
-	}
-	
-	return result, nil
+	return authService.Register(ctx, input)
 }
 
 // Login is the resolver for the login field.
 func (r *mutationResolver) Login(ctx context.Context, input model.LoginInput) (*model.AuthPayload, error) {
+	authService := services.NewAuthService(r.DB)
 
-
-// RefreshToken is the resolver for the refreshToken field.
-func (r *mutationResolver) RefreshToken(ctx context.Context, token string) (*model.AuthPayload, error) {
-	panic(fmt.Errorf("not implemented: RefreshToken - refreshToken"))
-
-	authService := services.NewAuthService()
-	
-	// Convert GraphQL input to service request
-	req := services.LoginRequest{
-		Email:    input.Email,
-		Password: input.Password,
-	}
-	
-	var tenantID *uuid.UUID
-	
-	// Parse tenant slug if provided and get tenant ID
-	if input.TenantSlug != nil {
-		var tenant models.Tenant
-		if err := r.DB.Where("slug = ?", *input.TenantSlug).First(&tenant).Error; err != nil {
-			return nil, fmt.Errorf("tenant not found: %w", err)
-		}
-		tenantID = &tenant.ID
-	}
-	
-	authResponse, err := authService.Login(req, tenantID)
-	if err != nil {
-		return nil, err
-	}
-	
-	// Convert to GraphQL response
-	result := &model.AuthPayload{
-		Token:        authResponse.Token,
-		RefreshToken: authResponse.RefreshToken,
-		User:         authResponse.User,
-		Permissions:  authResponse.Permissions,
-	}
-	
-	// Add tenant if user has one
-	if authResponse.User.TenantID != nil {
-		var tenant models.Tenant
-		if err := r.DB.First(&tenant, "id = ?", *authResponse.User.TenantID).Error; err == nil {
-			result.Tenant = &tenant
-		}
-	}
-	
-	return result, nil
+	return authService.Login(ctx, input)
 }
 
 // Logout is the resolver for the logout field.
@@ -443,7 +361,7 @@ func (r *mutationResolver) InitializeTenantRoles(ctx context.Context, tenantID s
 	if err != nil {
 		return false, fmt.Errorf("invalid tenant ID: %v", err)
 	}
-	
+
 	rbacService := services.NewRBACService(r.DB)
 	err = rbacService.InitializeTenantRoles(tenantUUID)
 	if err != nil {
@@ -477,7 +395,7 @@ func (r *planResolver) ID(ctx context.Context, obj *models.Plan) (string, error)
 func (r *planResolver) Features(ctx context.Context, obj *models.Plan) (map[string]any, error) {
 	var features map[string]any
 	if obj.Features != nil {
-		if err := obj.Features.Unmarshal(&features); err != nil {
+		if err := json.Unmarshal(obj.Features, &features); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal features: %v", err)
 		}
 	}
@@ -491,45 +409,25 @@ func (r *planResolver) MaxUsers(ctx context.Context, obj *models.Plan) (int32, e
 
 // Me is the resolver for the me field.
 func (r *queryResolver) Me(ctx context.Context) (*models.User, error) {
-
 	// Get user from context (set by auth middleware)
 	userID, exists := ctx.Value("user_id").(string)
 	if !exists {
 		return nil, fmt.Errorf("user not authenticated")
 	}
-	
+
 	// Parse user ID
 	userUUID, err := uuid.Parse(userID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid user ID: %v", err)
 	}
-	
+
 	// Get user from database
 	var user models.User
 	if err := r.DB.Preload("Role").First(&user, "id = ?", userUUID).Error; err != nil {
 		return nil, fmt.Errorf("user not found: %v", err)
 	}
-	
+
 	return &user, nil
-	userID := ctx.Value("userID")
-	if userID == nil {
-		return []string{}, nil
-	}
-
-	userUUIDStr, ok := userID.(string)
-	if !ok {
-		return []string{}, nil
-	}
-
-	userService := services.NewUserService(r.DB)
-	permissions, err := userService.GetUserPermissions(ctx, userUUIDStr)
-	if err != nil {
-		return []string{}, nil
-	}
-
-	return permissions, nil
-
-	panic(fmt.Errorf("not implemented: MyPermissions - myPermissions"))
 }
 
 // CheckPermission is the resolver for the checkPermission field.
@@ -825,7 +723,6 @@ type tenantResolver struct{ *Resolver }
 type tenantSubscriptionResolver struct{ *Resolver }
 type userResolver struct{ *Resolver }
 
-
 // Helper function to create string pointers
 func strPtr(s string) *string {
 	return &s
@@ -836,7 +733,24 @@ func requireSystemPermission(ctx context.Context, db *gorm.DB, permission string
 	return middleware.RequireSystemPermission(ctx, db, permission)
 }
 
-// Helper function to check tenant permissions  
+// Helper function to check tenant permissions
 func requireTenantPermission(ctx context.Context, db *gorm.DB, permission string, tenantID uuid.UUID) error {
 	return middleware.RequireTenantPermission(ctx, db, permission, tenantID)
+}
+
+// MyPermissions is the resolver for the myPermissions field.
+func (r *queryResolver) MyPermissions(ctx context.Context) ([]string, error) {
+	// Get user from context (set by auth middleware)
+	userID, exists := ctx.Value("user_id").(string)
+	if !exists {
+		return []string{}, fmt.Errorf("user not authenticated")
+	}
+
+	userService := services.NewUserService(r.DB)
+	permissions, err := userService.GetUserPermissions(ctx, userID)
+	if err != nil {
+		return []string{}, err
+	}
+
+	return permissions, nil
 }

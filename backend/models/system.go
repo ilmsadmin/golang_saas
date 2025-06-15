@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -82,27 +83,38 @@ const (
 // Tenant represents a tenant in the multi-tenant system
 type Tenant struct {
 	BaseModel
-	Name           string                 `json:"name" gorm:"not null"`
-	Slug           string                 `json:"slug" gorm:"uniqueIndex;not null"`
-	Subdomain      string                 `json:"subdomain" gorm:"uniqueIndex;not null"`
-	CustomDomains  datatypes.JSON         `json:"custom_domains" gorm:"type:jsonb"` // Array of custom domains
-	Status         TenantStatus           `json:"status" gorm:"default:ACTIVE"`
-	Settings       datatypes.JSON         `json:"settings" gorm:"type:jsonb"`
-	BillingInfo    datatypes.JSON         `json:"billing_info" gorm:"type:jsonb"`
-	ResourceLimits datatypes.JSON         `json:"resource_limits" gorm:"type:jsonb"`
+	Name           string         `json:"name" gorm:"not null"`
+	Slug           string         `json:"slug" gorm:"uniqueIndex;not null"`
+	Subdomain      string         `json:"subdomain" gorm:"uniqueIndex;not null"`
+	CustomDomains  datatypes.JSON `json:"custom_domains" gorm:"type:jsonb"` // Array of custom domains
+	Status         TenantStatus   `json:"status" gorm:"default:ACTIVE"`
+	Settings       datatypes.JSON `json:"settings" gorm:"type:jsonb"`
+	BillingInfo    datatypes.JSON `json:"billing_info" gorm:"type:jsonb"`
+	ResourceLimits datatypes.JSON `json:"resource_limits" gorm:"type:jsonb"`
 
 	// Relations
-	Users        []User         `json:"users,omitempty" gorm:"foreignKey:TenantID"`
-	Roles        []Role         `json:"roles,omitempty" gorm:"foreignKey:TenantID"`
-	Subscription *Subscription  `json:"subscription,omitempty" gorm:"foreignKey:TenantID"`
+	Users          []User          `json:"users,omitempty" gorm:"foreignKey:TenantID"`
+	Roles          []Role          `json:"roles,omitempty" gorm:"foreignKey:TenantID"`
+	Subscription   *Subscription   `json:"subscription,omitempty" gorm:"foreignKey:TenantID"`
 	DomainMappings []DomainMapping `json:"domain_mappings,omitempty" gorm:"foreignKey:TenantID"`
+}
+
+// Domain returns the first custom domain if available, otherwise nil
+func (t *Tenant) Domain() *string {
+	if t.CustomDomains != nil {
+		var customDomains []string
+		if err := json.Unmarshal([]byte(t.CustomDomains), &customDomains); err == nil && len(customDomains) > 0 {
+			return &customDomains[0]
+		}
+	}
+	return nil
 }
 
 // SubscriptionStatus enum
 type SubscriptionStatus string
 
 const (
-	SubscriptionStatusActive   SubscriptionStatus = "ACTIVE"
+	SubscriptionStatusActive    SubscriptionStatus = "ACTIVE"
 	SubscriptionStatusCancelled SubscriptionStatus = "CANCELLED"
 	SubscriptionStatusPastDue   SubscriptionStatus = "PAST_DUE"
 	SubscriptionStatusUnpaid    SubscriptionStatus = "UNPAID"
@@ -111,11 +123,11 @@ const (
 // Subscription represents a tenant's subscription
 type Subscription struct {
 	BaseModel
-	TenantID            uuid.UUID          `json:"tenant_id" gorm:"type:uuid;not null;index"`
-	PlanID              uuid.UUID          `json:"plan_id" gorm:"type:uuid;not null"`
-	Status              SubscriptionStatus `json:"status" gorm:"default:ACTIVE"`
-	CurrentPeriodStart  time.Time          `json:"current_period_start" gorm:"not null"`
-	CurrentPeriodEnd    time.Time          `json:"current_period_end" gorm:"not null"`
+	TenantID           uuid.UUID          `json:"tenant_id" gorm:"type:uuid;not null;index"`
+	PlanID             uuid.UUID          `json:"plan_id" gorm:"type:uuid;not null"`
+	Status             SubscriptionStatus `json:"status" gorm:"default:ACTIVE"`
+	CurrentPeriodStart time.Time          `json:"current_period_start" gorm:"not null"`
+	CurrentPeriodEnd   time.Time          `json:"current_period_end" gorm:"not null"`
 
 	// Relations
 	Tenant Tenant `json:"tenant" gorm:"foreignKey:TenantID"`
@@ -148,7 +160,7 @@ type SystemSettings struct {
 	Description *string        `json:"description"`
 }
 
-// SystemUser represents system administrators who manage the platform  
+// SystemUser represents system administrators who manage the platform
 type SystemUser struct {
 	BaseModel
 	Email        string         `json:"email" gorm:"uniqueIndex;not null"`

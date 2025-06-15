@@ -57,6 +57,7 @@ type Tenant {
   name: String!
   slug: String!
   subdomain: String!
+  domain: String @goField(forceResolver: true)
   customDomains: JSON
   status: TenantStatus!
   settings: JSON
@@ -242,6 +243,7 @@ input CreateTenantInput {
   name: String!
   slug: String!
   subdomain: String!
+  domain: String
   customDomains: JSON
   adminEmail: String!
   adminPassword: String!
@@ -254,6 +256,7 @@ input CreateTenantInput {
 
 input UpdateTenantInput {
   name: String
+  domain: String
   customDomains: JSON
   status: TenantStatus
   settings: JSON

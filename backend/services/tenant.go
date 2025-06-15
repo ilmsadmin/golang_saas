@@ -69,8 +69,15 @@ func (s *TenantService) CreateTenant(ctx context.Context, input model.CreateTena
 		Status:    models.TenantStatusActive,
 	}
 
-	if input.Domain != nil {
-		tenant.Domain = input.Domain
+	// Handle custom domain if provided
+	if input.Domain != nil && *input.Domain != "" {
+		// Add custom domain to CustomDomains JSON field
+		customDomains := []string{*input.Domain}
+		customDomainsJSON, err := json.Marshal(customDomains)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal custom domains: %v", err)
+		}
+		tenant.CustomDomains = datatypes.JSON(customDomainsJSON)
 	}
 
 	err = tx.Create(&tenant).Error
@@ -163,8 +170,14 @@ func (s *TenantService) UpdateTenant(ctx context.Context, id string, input model
 	if input.Name != nil {
 		tenant.Name = *input.Name
 	}
-	if input.Domain != nil {
-		tenant.Domain = input.Domain
+	if input.Domain != nil && *input.Domain != "" {
+		// Handle custom domain by updating CustomDomains JSON field
+		customDomains := []string{*input.Domain}
+		customDomainsJSON, err := json.Marshal(customDomains)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal custom domains: %v", err)
+		}
+		tenant.CustomDomains = datatypes.JSON(customDomainsJSON)
 	}
 	if input.Status != nil {
 		tenant.Status = models.TenantStatus(*input.Status)
@@ -294,7 +307,7 @@ func (s *TenantService) ValidateSlug(slug string) (string, error) {
 	// Convert to lowercase and replace spaces with hyphens
 	slug = strings.ToLower(slug)
 	slug = strings.ReplaceAll(slug, " ", "-")
-	
+
 	// Check if slug is reserved
 	reservedSlugs := []string{"admin", "api", "www", "mail", "ftp", "system", "app", "dashboard"}
 	for _, reserved := range reservedSlugs {
@@ -316,13 +329,13 @@ func isValidSlug(slug string) bool {
 	if len(slug) == 0 || len(slug) > 63 {
 		return false
 	}
-	
+
 	for _, char := range slug {
 		if !((char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') || char == '-') {
 			return false
 		}
 	}
-	
+
 	// Can't start or end with hyphen
 	return slug[0] != '-' && slug[len(slug)-1] != '-'
 }
